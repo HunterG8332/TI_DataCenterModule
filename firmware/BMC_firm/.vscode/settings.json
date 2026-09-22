@@ -1,0 +1,14 @@
+{
+  "idf.currentSetup": "C:\\esp\\v6.1\\esp-idf",
+  "idf.portWin": "COM5",
+  "idf.flashType": "UART",
+  "idf.customExtraVars": {
+    "OPENOCD_SCRIPTS": "C:\\Users\\willi\\.espressif/tools/openocd-esp32/v0.12.0-esp32-20240318/openocd-esp32/share/openocd/scripts"
+  },
+  "clangd.path": "C:\\Espressif\\tools\\esp-clangd\\esp-21.1.3_20260408\\esp-clangd\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=c:\\Users\\willi\\OneDrive\\Desktop\\Capstone\\firmware\\BMC_firm\\build"
+  ]
+}

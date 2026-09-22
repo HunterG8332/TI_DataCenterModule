@@ -1,5 +1,5 @@
 {
-  "cmake.sourceDirectory": "C:/Users/willi/OneDrive/Desktop/Capstone/firmware/00_hello_world",
+  "cmake.sourceDirectory": "C:/Users/willi/OneDrive/Desktop/Capstone/firmware/BMC_firm",
   "cmake.configureOnOpen": false,
   "idf.currentSetup": "C:\\esp\\v6.1\\esp-idf"
 }

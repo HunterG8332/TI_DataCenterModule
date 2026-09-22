@@ -11,7 +11,7 @@
                 "_UNICODE"
             ],
             "compileCommands": [
-                "${workspaceFolder}/00_hello_world/build/compile_commands.json"
+                "${workspaceFolder}/BMC_firm/build/compile_commands.json"
             ]
         }
     ],
