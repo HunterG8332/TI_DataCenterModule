@@ -1,0 +1,23 @@
+Here's a staged sequence. Each stage ends in something you can demo and nothing depends on a stage you haven't finished. The first four are really about learning ESP-IDF, with the BMC as the excuse.
+Stage 0 — Toolchain and the shape of a project (WROOM-32E)
+ Install ESP-IDF v5.x, build and flash hello_world, then idf.py monitor. Learn the five things you'll use constantly: idf.py set-target, idf.py build flash monitor, menuconfig, the CMakeLists.txt structure, and ESP_LOGI/LOGW/LOGE with per-tag log levels. Done when you can create a project from scratch without copying one.
+Stage 1 — Your first component
+ Move blink into components/bmc_board/ with a header exposing pin constants and a board_init(). This is the single most valuable early habit, because it's what makes the WROOM-to-S3 port a one-file change later. Done when main contains no pin numbers.
+Stage 2 — FreeRTOS basics
+ Two tasks: one at 20 Hz printing a counter with vTaskDelayUntil, one lower-priority task consuming from a queue. Add core pinning with xTaskCreatePinnedToCore and print xPortGetCoreID() to prove it. Measure jitter with esp_timer_get_time(). Done when you can show a jitter histogram over a minute — this is the same measurement that goes in your final dataset.
+Stage 3 — One sensor on I²C
+ i2c_master driver (the new v5 API, not the legacy i2c_driver_install you'll find in older examples), one TMP117, read the temperature register, print it at 1 Hz. Warm it with your finger. Done when the read is a tmp117_read_c() function in its own component with an error return you actually check.
+Stage 4 — The rest of the bus
+ Add a bus scan, then the second through fourth TMP117s, then one INA238 with a known load. Verify the INA238 against a bench meter — this is your calibration confidence, and it's worth doing carefully because every result you publish rests on it. Done when a single telemetry_sample() call fills a struct from all devices and reports which ones failed.
+Stage 5 — Networking, still on the bench
+ On the WROOM this is Wi-Fi; the socket code is identical to what runs on the S3-ETH later. Send one UDP datagram per second of CSV to a Python listener on your laptop. Then add the TCP command socket with only PING and STATUS. Done when you can nc into the board and get a response.
+Stage 6 — Wire stages 3–5 together
+ 20 Hz control task on core 1 producing samples into a queue, network task on core 0 draining it. Add sequence numbers, the drop counter, and jitter to every record. Unplug the network mid-run and confirm the control task's timing doesn't budge. Done when you have a gapless 10-minute CSV on the host.
+Stage 7 — Move to the ESP32-S3-ETH
+ Change target, change bmc_board, bring up the W5500 with esp_eth. Everything above should come back with no other edits. If it doesn't, the abstraction leaked somewhere and now is the cheap time to fix it.
+Stage 8 — Actuators, fans first
+ LEDC PWM sweep on one fan, then PCNT tach, then the duty floor characterization, then both fans. Done when you can command a duty over TCP and see the RPM in the telemetry stream.
+Stage 9 — Safety before heat
+ The mode state machine, safety_task, the trip table, the latch, and the task watchdog — all with a dummy heater output driving nothing but an LED. Force every trip source. Done when the failsafe demo from CONOPS Scenario 4.3 works with no heater attached.
+Stage 10 — Heat, at low power
+ Gate driver, heater enable, low-duty steps with someone watching the plate temperature live. Then Characterization mode, duty_map construction, then the PID, then the feedforward.
