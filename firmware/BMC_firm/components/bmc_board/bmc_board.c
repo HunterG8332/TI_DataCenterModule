@@ -4,6 +4,8 @@
 
 /* ESP32-WROOM-32E dev kit pin map. Pin numbers live only in this file. */
 #define BMC_LED_GPIO GPIO_NUM_12
+#define BMC_I2C_SDA_GPIO GPIO_NUM_21
+#define BMC_I2C_SCL_GPIO GPIO_NUM_22
 
 void board_init(void)
 {
@@ -15,4 +17,14 @@ void board_init(void)
 void board_led_set(bool on)
 {
     gpio_set_level(BMC_LED_GPIO, on ? 1 : 0);
+}
+
+gpio_num_t board_i2c_sda_gpio(void)
+{
+    return BMC_I2C_SDA_GPIO;
+}
+
+gpio_num_t board_i2c_scl_gpio(void)
+{
+    return BMC_I2C_SCL_GPIO;
 }
