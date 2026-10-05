@@ -730,6 +730,28 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of Partition Table
 
 #
+# BMC network
+#
+# default:
+CONFIG_BMC_NET_SSID="BMC-Telemetry"
+# default:
+CONFIG_BMC_NET_PASSWORD="bmctelemetry"
+# default:
+CONFIG_BMC_NET_CHANNEL=1
+# default:
+CONFIG_BMC_NET_MAX_STATIONS=4
+# end of BMC network
+
+#
+# BMC telemetry stream
+#
+# default:
+CONFIG_BMC_STREAM_PORT=9000
+# default:
+CONFIG_BMC_STREAM_ID="bmc0"
+# end of BMC telemetry stream
+
+#
 # Compiler options
 #
 # default:

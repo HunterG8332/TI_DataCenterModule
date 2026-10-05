@@ -1,6 +1,7 @@
 #include "bmc_fan.h"
 
 #include "driver/gpio.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -127,22 +128,55 @@ esp_err_t bmc_fan_set_duty_pct(bmc_fan_t *fan, float duty_pct)
     return ledc_update_duty(BMC_FAN_LEDC_MODE, fan->ledc_channel);
 }
 
-esp_err_t bmc_fan_read_rpm(bmc_fan_t *fan, uint32_t gate_ms, uint32_t *out_rpm)
+esp_err_t bmc_fan_read_rpm(bmc_fan_t *fan, uint32_t window_ms, uint32_t *out_rpm,
+                            bool *out_window_full)
 {
-    esp_err_t err = pcnt_unit_clear_count(fan->pcnt_unit);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(gate_ms));
-
     int count = 0;
-    err = pcnt_unit_get_count(fan->pcnt_unit, &count);
+    esp_err_t err = pcnt_unit_get_count(fan->pcnt_unit, &count);
     if (err != ESP_OK) {
         return err;
     }
 
-    *out_rpm = (uint32_t)(((uint64_t)count * 60000u) /
-                           ((uint64_t)gate_ms * BMC_FAN_PULSES_PER_REV));
+    /* The PCNT count wraps to 0 at the high limit; fold it into a free-running total. */
+    if (fan->tach_primed) {
+        int delta = count - fan->last_hw_count;
+        if (delta < 0) {
+            delta += BMC_FAN_PCNT_HIGH_LIMIT;
+        }
+        fan->total_edges += (uint32_t)delta;
+    }
+    fan->last_hw_count = count;
+    fan->tach_primed = true;
+
+    int64_t now_us = esp_timer_get_time();
+    fan->ring[fan->ring_head] = (bmc_fan_tach_sample_t){ .t_us = now_us, .edges = fan->total_edges };
+    fan->ring_head = (fan->ring_head + 1) % BMC_FAN_RING_LEN;
+    if (fan->ring_len < BMC_FAN_RING_LEN) {
+        fan->ring_len++;
+    }
+
+    /* Newest sample that is at least window_ms old; falls back to the oldest held. */
+    int64_t window_us = (int64_t)window_ms * 1000;
+    const bmc_fan_tach_sample_t *ref = NULL;
+    bool full = false;
+    for (uint32_t i = 1; i < fan->ring_len; i++) {
+        uint32_t idx = (fan->ring_head + BMC_FAN_RING_LEN - 1 - i) % BMC_FAN_RING_LEN;
+        ref = &fan->ring[idx];
+        if (now_us - ref->t_us >= window_us) {
+            full = true;
+            break;
+        }
+    }
+    if (out_window_full) {
+        *out_window_full = full;
+    }
+    if (ref == NULL || now_us <= ref->t_us) {
+        *out_rpm = 0;
+        return ESP_OK;
+    }
+
+    uint64_t edges = fan->total_edges - ref->edges;
+    uint64_t dt_us = (uint64_t)(now_us - ref->t_us);
+    *out_rpm = (uint32_t)((edges * 60000000ull) / (dt_us * BMC_FAN_PULSES_PER_REV));
     return ESP_OK;
 }

@@ -22,6 +22,13 @@ void board_led_set(bool on)
     gpio_set_level(BMC_LED_GPIO, on ? 1 : 0);
 }
 
+/* Stand-in heater enable: the LED pin, per the dummy-heater stage. The real
+ * HEATER ENABLE (GPIO40 on the S3 board) replaces this on the Stage 7 port. */
+void board_heater_enable_set(bool on)
+{
+    gpio_set_level(BMC_LED_GPIO, on ? 1 : 0);
+}
+
 gpio_num_t board_i2c_sda_gpio(void)
 {
     return BMC_I2C_SDA_GPIO;

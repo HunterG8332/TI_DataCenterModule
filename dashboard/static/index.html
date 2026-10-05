@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BMC Telemetry</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>BMC Telemetry</h1>
+    <p class="sub" id="sub">Waiting for data…</p>
+  </div>
+  <div class="controls">
+    <span id="link" class="badge" data-state="connecting" role="status">
+      <span class="ico" aria-hidden="true"></span><span id="linkText">Connecting…</span>
+    </span>
+    <div class="seg" role="group" aria-label="Time window">
+      <button data-win="30">30 s</button>
+      <button data-win="60" aria-pressed="true">1 min</button>
+      <button data-win="300">5 min</button>
+    </div>
+    <button id="pause" aria-pressed="false">Pause</button>
+    <button id="theme" title="Cycle theme: auto / light / dark">Theme: auto</button>
+  </div>
+</header>
+
+<main>
+  <section class="charts" id="charts" aria-label="Live charts"></section>
+
+  <section class="stats" aria-label="Link statistics">
+    <div><span class="k">Sample rate</span><span class="v" id="stRate">—</span></div>
+    <div><span class="k">Received</span><span class="v" id="stRecv">—</span></div>
+    <div><span class="k">Lost in transit</span><span class="v" id="stLost">—</span></div>
+    <div><span class="k">Dropped by BMC</span><span class="v" id="stDrops">—</span></div>
+    <div><span class="k">BMC restarts</span><span class="v" id="stRestarts">—</span></div>
+    <div><span class="k">Logging to</span><span class="v" id="stLog">—</span></div>
+  </section>
+
+  <details id="tbl">
+    <summary>Latest samples (table view)</summary>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time (s)</th><th>Seq</th><th>Temp (°C)</th><th>Power (W)</th><th>Fan (%)</th><th>Fan</th><th>RPM</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </details>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

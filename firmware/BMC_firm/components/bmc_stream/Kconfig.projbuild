@@ -1,0 +1,12 @@
+menu "BMC telemetry stream"
+
+    config BMC_STREAM_PORT
+        int "UDP port (BMC listens for HELLO here and streams from here)"
+        range 1024 65535
+        default 9000
+
+    config BMC_STREAM_ID
+        string "bmc_id field of every record"
+        default "bmc0"
+
+endmenu

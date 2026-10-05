@@ -1,1 +1,4 @@
 **/build/
+# dashboard
+dashboard/logs/
+__pycache__/

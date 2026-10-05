@@ -19,11 +19,25 @@
  * "never spin" gate, not just a firmware default, since some 4-wire fans
  * still idle-spin at 0% commanded duty rather than fully stopping. */
 
+#define BMC_FAN_RING_LEN 32
+
+typedef struct {
+    int64_t  t_us;
+    uint32_t edges;
+} bmc_fan_tach_sample_t;
+
 typedef struct {
     ledc_channel_t ledc_channel;
     pcnt_unit_handle_t pcnt_unit;
     pcnt_channel_handle_t pcnt_chan;
     int enable_gpio;
+    /* Sliding-window tach state (see bmc_fan_read_rpm). */
+    bmc_fan_tach_sample_t ring[BMC_FAN_RING_LEN];
+    uint32_t ring_head;
+    uint32_t ring_len;
+    uint32_t total_edges;
+    int      last_hw_count;
+    bool     tach_primed;
 } bmc_fan_t;
 
 esp_err_t bmc_fan_init(bmc_fan_t *fan, int pwm_gpio, int tach_gpio, int enable_gpio,
@@ -39,6 +53,11 @@ bool bmc_fan_is_enabled(const bmc_fan_t *fan);
  * the commanded curve. */
 esp_err_t bmc_fan_set_duty_pct(bmc_fan_t *fan, float duty_pct);
 
-/* Blocks the calling task for gate_ms while counting tach edges, then
- * returns the computed RPM. Not for use inside a hard-real-time loop. */
-esp_err_t bmc_fan_read_rpm(bmc_fan_t *fan, uint32_t gate_ms, uint32_t *out_rpm);
+/* Non-blocking. Call periodically (faster than window_ms); each call samples
+ * the free-running edge count and computes RPM over the most recent window of
+ * at least window_ms using real elapsed time. Resolution is
+ * 60000 / (window_ms * 2) RPM per edge (250 ms -> 120 RPM), independent of
+ * the call rate. *out_window_full is false until a full window of history
+ * exists; RPM (and any stall decision) is not trustworthy until then. */
+esp_err_t bmc_fan_read_rpm(bmc_fan_t *fan, uint32_t window_ms, uint32_t *out_rpm,
+                            bool *out_window_full);

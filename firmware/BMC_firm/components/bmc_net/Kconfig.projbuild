@@ -1,0 +1,23 @@
+menu "BMC network"
+
+    config BMC_NET_SSID
+        string "SoftAP SSID"
+        default "BMC-Telemetry"
+
+    config BMC_NET_PASSWORD
+        string "SoftAP WPA2 password (8+ characters; empty = open network)"
+        default "bmctelemetry"
+        help
+            Change this for anything beyond bench use. Note sdkconfig is tracked in git.
+
+    config BMC_NET_CHANNEL
+        int "SoftAP 2.4 GHz channel"
+        range 1 13
+        default 1
+
+    config BMC_NET_MAX_STATIONS
+        int "Maximum simultaneous Wi-Fi clients"
+        range 1 10
+        default 4
+
+endmenu

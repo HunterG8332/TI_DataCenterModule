@@ -7,6 +7,18 @@
 #define TMP117_SCL_SPEED_HZ     400000
 #define TMP117_XFER_TIMEOUT_MS  1000
 
+#define TMP117_REG_CONFIG       0x01
+/* Continuous mode, CONV = 000, AVG = 00 (no averaging): a new result about every
+ * 15.5 ms. The power-on default (0x0220) is 8x averaging on a 1 s cycle, which
+ * only yields a fresh value once per second -- too slow for 10 Hz telemetry. */
+#define TMP117_CONFIG_FAST      0x0000
+
+static esp_err_t write_reg16(i2c_master_dev_handle_t dev, uint8_t reg, uint16_t value)
+{
+    uint8_t tx[3] = { reg, (uint8_t)(value >> 8), (uint8_t)(value & 0xFF) };
+    return i2c_master_transmit(dev, tx, sizeof(tx), TMP117_XFER_TIMEOUT_MS);
+}
+
 static esp_err_t read_reg16(i2c_master_dev_handle_t dev, uint8_t reg, uint16_t *out)
 {
     uint8_t rx[2];
@@ -39,7 +51,7 @@ esp_err_t tmp117_init(i2c_master_bus_handle_t bus, uint8_t i2c_addr, tmp117_t *d
     if (id != TMP117_DEVICE_ID) {
         return ESP_ERR_NOT_FOUND;
     }
-    return ESP_OK;
+    return write_reg16(dev->i2c_dev, TMP117_REG_CONFIG, TMP117_CONFIG_FAST);
 }
 
 esp_err_t tmp117_read_c(tmp117_t *dev, float *out_temp_c)

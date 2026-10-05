@@ -12,6 +12,9 @@ void board_init(void);
 
 void board_led_set(bool on);
 
+/* Heater enable line (stand-in: shares the LED pin). Off at boot. */
+void board_heater_enable_set(bool on);
+
 gpio_num_t board_i2c_sda_gpio(void);
 gpio_num_t board_i2c_scl_gpio(void);
 
