@@ -39,13 +39,6 @@ static const char *TAG = "bmc_firm";
                                         (checked fresh on every bmc_fan_set_duty_pct
                                         call) takes effect */
 #define FAN_TACH_WINDOW_MS 250   /* sliding window: 120 RPM resolution (2 edges/rev) */
-/* Set to 1 to run the duty-sweep validation once at boot. */
-#define FAN_SWEEP_TEST          1
-#define FAN_SWEEP_STEP_PCT      10
-#define FAN_SWEEP_SETTLE_MS     4000  /* spin-up/settle portion of each step */
-#define FAN_SWEEP_SAMPLES       10    /* steady-state samples (at 10 Hz) averaged per step */
-#define FAN_SWEEP_SAMPLE_MS     100
-#define FAN_SWEEP_MONO_TOL_RPM  120   /* one tach quantum (250 ms window, 2 edges/rev) */
 
 #define FAN_STALL_RECOVER_CYCLES 5    /* consecutive nonzero-RPM cycles to clear a stall */
 #define FAN_STALL_MIN_DUTY_PCT 10.0f  /* below this the fan may legitimately idle/stop */
@@ -67,10 +60,6 @@ static volatile float s_fan_duty_pct = 0.0f;
 static volatile bool s_fan_enabled = false;
 static volatile uint32_t s_fan_rpm = 0;
 static volatile bool s_fan_stalled = false;  /* set on stall, cleared when tach returns; any heater enable must check this */
-
-/* Set >= 0 to override the temperature curve with a fixed duty (used by the
- * sweep test). Negative = normal curve control. */
-static volatile float s_fan_duty_override = -1.0f;
 
 static float fan_curve_duty_pct(float temp_c)
 {
@@ -219,10 +208,6 @@ static void fan_task(void *arg)
     while (1) {
         float temp_c = s_temp_c;
         float duty = fan_curve_duty_pct(temp_c);
-        float override_duty = s_fan_duty_override;
-        if (override_duty >= 0.0f) {
-            duty = override_duty;
-        }
 
         err = bmc_fan_set_duty_pct(&fan, duty);
         if (err != ESP_OK) {
@@ -288,75 +273,6 @@ static void fan_task(void *arg)
     }
 }
 
-#if FAN_SWEEP_TEST
-/* Validation: sweep commanded duty 0..100% in 10% steps, record the measured
- * RPM at each step, and check the response is monotonic. Runs once at boot,
- * then returns the fan to normal curve control.
- *
- * Only one fan channel exists on this board, so "reports independently" can
- * not be exercised here; the results table is per-fan-ready (one column per
- * fan) once a second PWM/tach pair is added. */
-static void fan_sweep_test_task(void *arg)
-{
-    enum { STEPS = 11 };
-    const int settle_samples = FAN_SWEEP_SETTLE_MS / FAN_SWEEP_SAMPLE_MS;
-    uint32_t rpm_avg[STEPS];
-
-    vTaskDelay(pdMS_TO_TICKS(3000));  /* let fan_task init */
-    ESP_LOGW(TAG, "SWEEP: starting fan duty sweep (curve control suspended)");
-
-    /* Every 100 ms (10 Hz) for the whole sweep, including spin-up transients,
-     * emit one CSV row live. printf, so rows are not log-prefixed; the host
-     * script (tools/sweep_to_csv.py) collects CSV_BEGIN..CSV_END. "steady" is 1
-     * for the last FAN_SWEEP_SAMPLES samples of each step, which are averaged
-     * for the monotonic check. */
-    printf("CSV_BEGIN\nt_ms,commanded_duty_pct,measured_rpm,steady\n");
-    int64_t t0_us = esp_timer_get_time();
-    TickType_t last_wake = xTaskGetTickCount();
-
-    for (int i = 0; i < STEPS; i++) {
-        s_fan_duty_override = (float)(i * FAN_SWEEP_STEP_PCT);
-        uint64_t sum = 0;
-        for (int n = 0; n < settle_samples + FAN_SWEEP_SAMPLES; n++) {
-            vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(FAN_SWEEP_SAMPLE_MS));
-            uint32_t r = s_fan_rpm;
-            bool steady = n >= settle_samples;
-            if (steady) {
-                sum += r;
-            }
-            printf("%lld,%d,%lu,%d\n", (long long)((esp_timer_get_time() - t0_us) / 1000),
-                   i * FAN_SWEEP_STEP_PCT, (unsigned long)r, steady ? 1 : 0);
-        }
-        rpm_avg[i] = (uint32_t)(sum / FAN_SWEEP_SAMPLES);
-    }
-    s_fan_duty_override = -1.0f;
-    printf("CSV_END\n");
-
-    for (int i = 0; i < STEPS; i++) {
-        ESP_LOGI(TAG, "SWEEP: duty=%3d%% rpm=%lu", i * FAN_SWEEP_STEP_PCT,
-                 (unsigned long)rpm_avg[i]);
-    }
-    if (s_fan_stalled) {
-        ESP_LOGW(TAG, "SWEEP: stall latched during sweep, results suspect");
-    }
-
-    bool mono = true;
-    for (int i = 1; i < STEPS; i++) {
-        if (rpm_avg[i] + FAN_SWEEP_MONO_TOL_RPM < rpm_avg[i - 1]) {
-            mono = false;
-            ESP_LOGE(TAG, "SWEEP: non-monotonic at %d%%: %lu -> %lu RPM", i * FAN_SWEEP_STEP_PCT,
-                     (unsigned long)rpm_avg[i - 1], (unsigned long)rpm_avg[i]);
-        }
-    }
-    bool responds = rpm_avg[STEPS - 1] > rpm_avg[0] + FAN_SWEEP_MONO_TOL_RPM;
-
-    ESP_LOGW(TAG, "SWEEP: monotonic (tol %d RPM): %s | 100%% > 0%%: %s | independence: N/A (1 fan)",
-             FAN_SWEEP_MONO_TOL_RPM, mono ? "PASS" : "FAIL", responds ? "PASS" : "FAIL");
-    ESP_LOGW(TAG, "SWEEP: done, curve control restored");
-    vTaskDelete(NULL);
-}
-#endif
-
 void app_main(void)
 {
     board_init();
@@ -377,9 +293,4 @@ void app_main(void)
 
     xTaskCreatePinnedToCore(fan_task, "fan", 4096, NULL,
                              FAN_TASK_PRIORITY, NULL, FAN_TASK_CORE);
-
-#if FAN_SWEEP_TEST
-    xTaskCreatePinnedToCore(fan_sweep_test_task, "fan_sweep", 4096, NULL,
-                             FAN_TASK_PRIORITY - 1, NULL, NET_TASK_CORE);
-#endif
 }
