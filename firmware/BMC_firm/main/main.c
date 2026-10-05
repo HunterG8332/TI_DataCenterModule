@@ -22,7 +22,7 @@ static const char *TAG = "bmc_firm";
 #define TMP117_I2C_ADDR      0x48     /* ADD0 -> GND */
 #define SSD1306_I2C_ADDR     0x3C
 #define INA238_I2C_ADDR      0x40     /* A1, A0 -> GND */
-#define FAN_LINK_I2C_ADDR    0x44     /* peer receiving the commanded fan duty */
+#define FAN_LINK_I2C_ADDR    0x44     /* peer receiving the commanded fan duty will be removed when sensor emulation is no longer used*/
 #define TMP117_TASK_PRIORITY 8
 #define TMP117_TASK_CORE     1
 #define SAMPLE_PERIOD_MS     100      /* 10 Hz telemetry */
@@ -63,6 +63,7 @@ static volatile bool s_fan_stalled = false;  /* set on stall, cleared when tach 
 
 static float fan_curve_duty_pct(float temp_c)
 {
+    //Sets the linear fan curve
     float duty = (temp_c - FAN_CURVE_LOW_C) * 100.0f / (FAN_CURVE_HIGH_C - FAN_CURVE_LOW_C);
     if (duty < 0.0f) {
         duty = 0.0f;
@@ -74,6 +75,7 @@ static float fan_curve_duty_pct(float temp_c)
 
 static void sensor_task(void *arg)
 {
+    //polls tmp117, ina238 sensors and displays output on the oled
     tmp117_t tmp117;
     esp_err_t err = tmp117_init(bmc_i2c_bus(), TMP117_I2C_ADDR, &tmp117);
     if (err != ESP_OK) {
@@ -181,6 +183,7 @@ static void sensor_task(void *arg)
 
 static void fan_task(void *arg)
 {
+    //controls the fan speed and reads tachometer
     bmc_fan_t fan;
     esp_err_t err = bmc_fan_init(&fan, board_fan_pwm_gpio(), board_fan_tach_gpio(),
                                   board_fan_enable_gpio(), FAN_LEDC_TIMER, FAN_LEDC_CHANNEL);
@@ -217,7 +220,8 @@ static void fan_task(void *arg)
         s_fan_enabled = bmc_fan_is_enabled(&fan);
 
         /* Report 0% while the interlock has the fan disabled. Log only on
-         * link up/down transitions so a missing peer doesn't spam every 50 ms. */
+         * link up/down transitions so a missing peer doesn't spam every 50 ms. 
+         * will remove once sensor emulation is no longer used*/
         err = bmc_fan_link_send(&fan_link, s_fan_enabled ? duty : 0.0f);
         if (err != ESP_OK && link_ok) {
             ESP_LOGW(TAG, "fan link 0x%02x send failed: %s", FAN_LINK_I2C_ADDR,
@@ -279,8 +283,10 @@ void app_main(void)
 
     ESP_ERROR_CHECK(bmc_i2c_init());
     telemetry_init();
-    xTaskCreatePinnedToCore(sensor_task, "tmp117", 8192, NULL,
-                             TMP117_TASK_PRIORITY, NULL, TMP117_TASK_CORE);
+    xTaskCreatePinnedToCore(sensor_task, "tmp117", 8192, NULL, TMP117_TASK_PRIORITY, NULL, TMP117_TASK_CORE);
+    
+    xTaskCreatePinnedToCore(fan_task, "fan", 4096, NULL, FAN_TASK_PRIORITY, NULL, FAN_TASK_CORE);
+}
 
     /* The BMC must keep controlling with no network, so a link failure is logged, not fatal. */
     esp_err_t net_err = bmc_net_init();
@@ -291,6 +297,4 @@ void app_main(void)
         ESP_LOGE(TAG, "network unavailable: %s", esp_err_to_name(net_err));
     }
 
-    xTaskCreatePinnedToCore(fan_task, "fan", 4096, NULL,
-                             FAN_TASK_PRIORITY, NULL, FAN_TASK_CORE);
-}
+    
