@@ -1,6 +1,5 @@
 {
   "idf.currentSetup": "C:\\esp\\v6.1\\esp-idf",
-  "idf.portWin": "COM5",
   "idf.flashType": "UART",
   "idf.customExtraVars": {
     "OPENOCD_SCRIPTS": "C:\\Users\\willi\\.espressif/tools/openocd-esp32/v0.12.0-esp32-20240318/openocd-esp32/share/openocd/scripts"
@@ -10,5 +9,6 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=c:\\Users\\willi\\OneDrive\\Desktop\\Capstone\\firmware\\BMC_firm\\build"
-  ]
+  ],
+  "idf.port": "COM5"
 }

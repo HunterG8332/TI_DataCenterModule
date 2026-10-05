@@ -14,3 +14,7 @@ void board_led_set(bool on);
 
 gpio_num_t board_i2c_sda_gpio(void);
 gpio_num_t board_i2c_scl_gpio(void);
+
+gpio_num_t board_fan_pwm_gpio(void);
+gpio_num_t board_fan_tach_gpio(void);
+gpio_num_t board_fan_enable_gpio(void);
