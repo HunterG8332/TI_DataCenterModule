@@ -27,7 +27,6 @@ static const char *TAG = "bmc_firm";
 #define TMP117_TASK_CORE     1
 #define SAMPLE_PERIOD_MS     100      /* 10 Hz telemetry */
 #define OLED_EVERY_N_SAMPLES 10       /* OLED redraw at 1 Hz so it cannot stretch the 100 ms period */
-#define LOG_EVERY_N_SAMPLES  10
 
 /* Core 0 carries Wi-Fi/lwIP and everything that can block on a socket. */
 #define NET_TASK_PRIORITY    5
@@ -61,6 +60,19 @@ static volatile bool s_fan_enabled = false;
 static volatile uint32_t s_fan_rpm = 0;
 static volatile bool s_fan_stalled = false;  /* set on stall, cleared when tach returns; any heater enable must check this */
 
+/* Log a fault once when it starts and once when it clears, so a persistent
+ * failure doesn't print every cycle. */
+static void log_fault_edge(bool *faulted, esp_err_t err, const char *what)
+{
+    if (err != ESP_OK && !*faulted) {
+        ESP_LOGW(TAG, "%s failed: %s", what, esp_err_to_name(err));
+        *faulted = true;
+    } else if (err == ESP_OK && *faulted) {
+        ESP_LOGI(TAG, "%s recovered", what);
+        *faulted = false;
+    }
+}
+
 static float fan_curve_duty_pct(float temp_c)
 {
     //Sets the linear fan curve
@@ -70,6 +82,7 @@ static float fan_curve_duty_pct(float temp_c)
     } else if (duty > 100.0f) {
         duty = 100.0f;
     }
+    
     return duty;
 }
 
@@ -101,35 +114,24 @@ static void sensor_task(void *arg)
 
     TickType_t last_wake = xTaskGetTickCount();
     unsigned iter = 0;
+    bool ina_fault = false, tmp_fault = false, oled_fault = false;
     while (1) {
-        bool log_now = (iter % LOG_EVERY_N_SAMPLES) == 0;
-
         float power_w = 0.0f;
         bool power_valid = false;
         if (ina_ok) {
             esp_err_t perr = ina238_read_power_w(&ina238, &power_w);
-            if (perr == ESP_OK) {
-                power_valid = true;
-                if (log_now) {
-                    ESP_LOGI(TAG, "ina238: %.3f W", power_w);
-                }
-            } else {
-                ESP_LOGW(TAG, "ina238 read failed: %s", esp_err_to_name(perr));
-            }
+            power_valid = (perr == ESP_OK);
+            log_fault_edge(&ina_fault, perr, "ina238 read");
         }
 
         float temp_c = 0.0f;
         bool temp_valid = false;
         err = tmp117_read_c(&tmp117, &temp_c);
-        if (err == ESP_OK) {
-            temp_valid = true;
-            if (log_now) {
-                ESP_LOGI(TAG, "tmp117: %.4f C", temp_c);
-            }
+        temp_valid = (err == ESP_OK);
+        if (temp_valid) {
             s_temp_c = temp_c;  /* raw value, published before the display-only clamp below */
-        } else {
-            ESP_LOGW(TAG, "tmp117 read failed: %s", esp_err_to_name(err));
         }
+        log_fault_edge(&tmp_fault, err, "tmp117 read");
 
         telemetry_sample_t sample = {
             .temp_c = temp_c,
@@ -166,9 +168,7 @@ static void sensor_task(void *arg)
                 ssd1306_draw_text(&oled, 0, 6, 2, pwr_line);
             }
 
-            if (ssd1306_flush(&oled) != ESP_OK) {
-                ESP_LOGW(TAG, "ssd1306_flush failed");
-            }
+            log_fault_edge(&oled_fault, ssd1306_flush(&oled), "ssd1306_flush");
         }
 
         iter++;
@@ -204,6 +204,7 @@ static void fan_task(void *arg)
         return;
     }
     bool link_ok = true;  /* so the first failed send logs a warning */
+    bool duty_fault = false, rpm_fault = false;
     TickType_t above_floor_since = 0;
     unsigned recover_cycles = 0;
     board_heater_enable_set(false);  /* heater is off until explicitly enabled */
@@ -213,9 +214,7 @@ static void fan_task(void *arg)
         float duty = fan_curve_duty_pct(temp_c);
 
         err = bmc_fan_set_duty_pct(&fan, duty);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "bmc_fan_set_duty_pct failed: %s", esp_err_to_name(err));
-        }
+        log_fault_edge(&duty_fault, err, "bmc_fan_set_duty_pct");
         s_fan_duty_pct = duty;
         s_fan_enabled = bmc_fan_is_enabled(&fan);
 
@@ -269,9 +268,8 @@ static void fan_task(void *arg)
                              (unsigned long)rpm);
                 }
             }
-        } else {
-            ESP_LOGW(TAG, "bmc_fan_read_rpm failed: %s", esp_err_to_name(err));
         }
+        log_fault_edge(&rpm_fault, err, "bmc_fan_read_rpm");
 
         vTaskDelay(pdMS_TO_TICKS(FAN_CONTROL_PERIOD_MS));
     }
@@ -284,9 +282,6 @@ void app_main(void)
     ESP_ERROR_CHECK(bmc_i2c_init());
     telemetry_init();
     xTaskCreatePinnedToCore(sensor_task, "tmp117", 8192, NULL, TMP117_TASK_PRIORITY, NULL, TMP117_TASK_CORE);
-    
-    xTaskCreatePinnedToCore(fan_task, "fan", 4096, NULL, FAN_TASK_PRIORITY, NULL, FAN_TASK_CORE);
-}
 
     /* The BMC must keep controlling with no network, so a link failure is logged, not fatal. */
     esp_err_t net_err = bmc_net_init();
@@ -297,4 +292,5 @@ void app_main(void)
         ESP_LOGE(TAG, "network unavailable: %s", esp_err_to_name(net_err));
     }
 
-    
+    xTaskCreatePinnedToCore(fan_task, "fan", 4096, NULL, FAN_TASK_PRIORITY, NULL, FAN_TASK_CORE);
+}
