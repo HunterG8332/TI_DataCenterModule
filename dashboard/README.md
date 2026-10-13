@@ -7,7 +7,7 @@ Live browser dashboard for the BMC. Python standard library only (3.8+), no inst
  │ core 1: sensor_task / fan_task        │            │ server.py                              │
  │    └─ telemetry_publish()  (non-block)│            │   UDP :9000  ─► parse, gap-detect,     │      ┌─────────┐
  │ core 0: net_tx_task ── bmc_net ───────┼─ UDP/CSV ─►│                 history, CSV log       ├─SSE─►│ browser │
- │         (SoftAP now, Ethernet later)  │◄─ HELLO ───┤   HTTP :8080 ─► static/ + /events      │      └─────────┘
+ │         (SoftAP now, Ethernet later)  │◄─ HELLO ───┤   HTTP :8090 ─► static/ + /events      │      └─────────┘
  └───────────────────────────────────────┘            └────────────────────────────────────────┘
 ```
 
@@ -16,7 +16,7 @@ Live browser dashboard for the BMC. Python standard library only (3.8+), no inst
 ```powershell
 cd dashboard
 python server.py                  # real BMC on its SoftAP (BMC = 192.168.4.1)
-# open http://localhost:8080
+# open http://localhost:8090
 ```
 
 No hardware? Run a fake BMC that speaks the same protocol:
@@ -24,16 +24,17 @@ No hardware? Run a fake BMC that speaks the same protocol:
 ```powershell
 python server.py --bmc-ip 127.0.0.1 --bmc-port 9100
 python simulate_bmc.py --port 9100 --loss 0.03     # --loss simulates dropped samples
+                                                   # --no-permit simulates the open heater permit switch
 ```
 
-Other devices on the BMC's Wi-Fi (phone, second laptop) can open `http://<host-ip>:8080`
+Other devices on the BMC's Wi-Fi (phone, second laptop) can open `http://<host-ip>:8090`
 (the server prints the addresses). Use `--http-host 127.0.0.1` to keep it local-only.
 
-Windows firewall must allow inbound **UDP 9000** and **TCP 8080** for Python (admin PowerShell):
+Windows firewall must allow inbound **UDP 9000** and **TCP 8090** for Python (admin PowerShell):
 
 ```powershell
 New-NetFirewallRule -DisplayName "BMC dashboard UDP" -Direction Inbound -Protocol UDP -LocalPort 9000 -Action Allow
-New-NetFirewallRule -DisplayName "BMC dashboard HTTP" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
+New-NetFirewallRule -DisplayName "BMC dashboard HTTP" -Direction Inbound -Protocol TCP -LocalPort 8090 -Action Allow
 ```
 
 Every record is appended to `logs/telemetry_<timestamp>.csv` (git-ignored). `--no-log` disables it.
@@ -45,11 +46,29 @@ telemetry port. The BMC remembers each sender (up to 4) and streams to it, forge
 10 s without a HELLO. Nothing in the BMC needs to know the host's IP in advance, and several viewers
 can subscribe. Switching to Ethernet only changes `--bmc-ip` (e.g. `192.168.10.20`).
 
+**Heater request.** The dashboard's switch + slider become `HEATER <0|1> <pct>\n` datagrams
+(e.g. `HEATER 1 40.0`), sent to the BMC every 250 ms from the telemetry port. The browser re-posts
+`/api/heater` every second while the switch is on; the server stops asserting ON 3 s after the last post
+(closed tab), and the BMC treats 1 s of silence as OFF (lost link). There is no authentication (lab demo).
+The request is only a *request*; the BMC runs the heater only while all of these hold:
+
+| Condition | Where |
+|---|---|
+| switch on, heartbeat fresh | dashboard |
+| hardware permit closed (GPIO27 to ground, active-low) | `board_heater_permit()` |
+| fan enabled (GPIO16 interlock closed) | `fan_task` |
+| temperature valid and below 100 C | `heater_arbiter()` in `main.c` |
+| no fan stall | `heater_arbiter()` |
+
+A fan stall, over-temperature or lost temperature reading **latches** the heater off; switch it off and on
+in the dashboard to re-arm. An open permit or fan interlock only inhibits while open. The applied power
+leaves GPIO23 as 40 kHz PWM (see `bmc_heater_cmd.h` for the RC filter) and is reported in `heater_pct`.
+
 **Telemetry.** One CSV record per datagram, UDP port 9000, 10 Hz:
 
 ```
-bmc_id,seq,t_us,temp_c,power_w,fan_duty_pct,fan_en,fan_rpm,drops,flags
-bmc0,1042,104200311,41.2031,9.874,26.4,1,1005,0,0
+bmc_id,seq,t_us,temp_c,power_w,fan_duty_pct,fan_en,fan_rpm,heater_pct,drops,flags
+bmc0,1042,104200311,41.2031,9.874,26.4,1,1005,40.0,0,7
 ```
 
 | Field | Meaning |
@@ -59,8 +78,9 @@ bmc0,1042,104200311,41.2031,9.874,26.4,1,1005,0,0
 | `t_us` | `esp_timer` microseconds since boot (monotonic; the time axis of every chart) |
 | `temp_c`, `power_w` | Sensor readings. **Empty field = reading unavailable** (chart shows a break) |
 | `fan_duty_pct`, `fan_en`, `fan_rpm` | Commanded duty, interlock state (0/1), measured speed |
+| `heater_pct` | Heater power actually demanded of the emulator (0 whenever inhibited) |
 | `drops` | Records the BMC itself discarded (queue full or link down) |
-| `flags` | Reserved bit field (faults, mode) |
+| `flags` | bit0 heater requested, 1 permit closed, 2 heater active, 3 fan stall, 4 over-temp, 5 temp invalid, 6 fan interlock open, 7 tripped (latched) |
 
 The BMC re-emits a header line (`bmc_id,seq,t_us,…`) every 200 records and after each HELLO from a new
 subscriber. The server maps fields **by header name**, so adding a column in firmware never breaks the

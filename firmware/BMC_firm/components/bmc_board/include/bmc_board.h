@@ -12,6 +12,10 @@ void board_init(void);
 
 void board_led_set(bool on);
 
+/* Hardware heater permit (active-low switch to ground, pull-up inside). False
+ * when open/unwired, so the heater can never run without it. */
+bool board_heater_permit(void);
+
 /* Heater enable line (stand-in: shares the LED pin). Off at boot. */
 void board_heater_enable_set(bool on);
 
@@ -21,3 +25,6 @@ gpio_num_t board_i2c_scl_gpio(void);
 gpio_num_t board_fan_pwm_gpio(void);
 gpio_num_t board_fan_tach_gpio(void);
 gpio_num_t board_fan_enable_gpio(void);
+
+/* Demanded-power analog out to the emulator (PWM + external RC filter). */
+gpio_num_t board_heater_cmd_gpio(void);

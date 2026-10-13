@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """BMC telemetry dashboard server (standard library only).
 
-  BMC --UDP CSV (port 9000)--> this server --SSE/HTTP (port 8080)--> browser(s)
+  BMC --UDP CSV (port 9000)--> this server --SSE/HTTP (port 8090)--> browser(s)
 
 * Sends a HELLO datagram to the BMC every couple of seconds so the BMC learns
   where to stream (same mechanism over SoftAP Wi-Fi or Ethernet).
+* Relays the browser's heater switch/slider to the BMC as "HEATER <0|1> <pct>"
+  datagrams every 250 ms. The browser must keep re-posting while the switch is
+  on; if it goes quiet (tab closed) the request lapses and the heater turns off.
 * Parses CSV telemetry, detects sequence gaps, keeps a rolling history, and
   appends every record to logs/telemetry_<timestamp>.csv.
 * Serves ./static and pushes live samples to browsers via Server-Sent Events.
@@ -28,9 +31,11 @@ from urllib.parse import parse_qs, urlparse
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 DEFAULT_COLUMNS = ["bmc_id", "seq", "t_us", "temp_c", "power_w",
-                   "fan_duty_pct", "fan_en", "fan_rpm", "drops", "flags"]
+                   "fan_duty_pct", "fan_en", "fan_rpm", "heater_pct", "drops", "flags"]
 HELLO = b"HELLO\n"
 HELLO_PERIOD_S = 2.0
+HEATER_SEND_PERIOD_S = 0.25
+HEATER_LEASE_S = 3.0       # browser heartbeat is 1 s; a missed beat or two is tolerated
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                  ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
 
@@ -178,6 +183,26 @@ class TelemetryState:
                 self.subscribers.remove(q)
 
 
+class HeaterRequest:
+    """Latest browser request, valid only for HEATER_LEASE_S after it was posted."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.on = False
+        self.pct = 0.0
+        self.expires = 0.0
+
+    def set(self, on, pct):
+        with self.lock:
+            self.on = bool(on)
+            self.pct = min(100.0, max(0.0, pct))
+            self.expires = time.monotonic() + HEATER_LEASE_S
+
+    def effective(self):
+        with self.lock:
+            return (self.on and time.monotonic() < self.expires), self.pct
+
+
 def udp_loop(sock, state):
     while True:
         try:
@@ -196,8 +221,24 @@ def hello_loop(sock, bmc_addr):
         time.sleep(HELLO_PERIOD_S)
 
 
-def make_handler(state, bmc_addr):
+def heater_loop(sock, bmc_addr, heater):
+    while True:
+        on, pct = heater.effective()
+        try:
+            sock.sendto(f"HEATER {int(on)} {pct:.1f}\n".encode(), bmc_addr)
+        except OSError:
+            pass
+        time.sleep(HEATER_SEND_PERIOD_S)
+
+
+def make_handler(state, bmc_addr, heater):
     bmc_text = f"{bmc_addr[0]}:{bmc_addr[1]}"
+
+    def current_status():
+        status = state.status(bmc_text)
+        on, pct = heater.effective()
+        status["heater_cmd"] = {"on": on, "pct": pct}
+        return status
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -219,12 +260,27 @@ def make_handler(state, bmc_addr):
                 n = int(parse_qs(url.query).get("n", ["6000"])[0])
                 return self._send(200, json.dumps(state.snapshot(n)).encode(), "application/json")
             if url.path == "/api/status":
-                return self._send(200, json.dumps(state.status(bmc_text)).encode(), "application/json")
+                return self._send(200, json.dumps(current_status()).encode(), "application/json")
             name = "index.html" if url.path == "/" else url.path.lstrip("/")
             path = (STATIC / name).resolve()
             if STATIC not in path.parents or not path.is_file():
                 return self._send(404, b"not found", "text/plain")
             self._send(200, path.read_bytes(), CONTENT_TYPES.get(path.suffix, "application/octet-stream"))
+
+        def do_POST(self):
+            if urlparse(self.path).path != "/api/heater":
+                return self._send(404, b"not found", "text/plain")
+            try:
+                length = min(int(self.headers.get("Content-Length", "0")), 1024)
+                body = json.loads(self.rfile.read(length) or b"{}")
+                on, pct = bool(body.get("on")), float(body.get("pct", 0))
+                if not math.isfinite(pct):
+                    raise ValueError("pct")
+            except (ValueError, TypeError, AttributeError):
+                return self._send(400, b"bad request", "text/plain")
+            heater.set(on, pct)
+            on, pct = heater.effective()
+            self._send(200, json.dumps({"on": on, "pct": pct}).encode(), "application/json")
 
         def _events(self):
             self.send_response(200)
@@ -243,7 +299,7 @@ def make_handler(state, bmc_addr):
                         pass
                     if time.monotonic() >= next_status:
                         next_status = time.monotonic() + 1.0
-                        self.wfile.write(f"event: status\ndata: {json.dumps(state.status(bmc_text))}\n\n".encode())
+                        self.wfile.write(f"event: status\ndata: {json.dumps(current_status())}\n\n".encode())
                     self.wfile.flush()
             except (OSError, ValueError):
                 pass
@@ -265,7 +321,7 @@ def main():
     ap.add_argument("--bmc-ip", default="192.168.4.1", help="BMC address (SoftAP default; Ethernet e.g. 192.168.10.20)")
     ap.add_argument("--bmc-port", type=int, default=9000, help="BMC telemetry/hello port")
     ap.add_argument("--udp-port", type=int, default=9000, help="local UDP port the BMC streams to")
-    ap.add_argument("--http-port", type=int, default=8080)
+    ap.add_argument("--http-port", type=int, default=8090)
     ap.add_argument("--http-host", default="0.0.0.0", help="use 127.0.0.1 to keep the dashboard local")
     ap.add_argument("--history", type=int, default=6000, help="samples kept in memory (6000 = 10 min at 10 Hz)")
     ap.add_argument("--log-dir", default=str(ROOT / "logs"))
@@ -280,9 +336,11 @@ def main():
     sock.bind(("0.0.0.0", args.udp_port))
     threading.Thread(target=udp_loop, args=(sock, state), daemon=True).start()
     threading.Thread(target=hello_loop, args=(sock, bmc_addr), daemon=True).start()
+    heater = HeaterRequest()
+    threading.Thread(target=heater_loop, args=(sock, bmc_addr, heater), daemon=True).start()
 
     try:
-        httpd = ThreadingHTTPServer((args.http_host, args.http_port), make_handler(state, bmc_addr))
+        httpd = ThreadingHTTPServer((args.http_host, args.http_port), make_handler(state, bmc_addr, heater))
     except OSError as exc:
         raise SystemExit(f"Cannot listen on HTTP port {args.http_port} ({exc}).\n"
                          f"Another program is probably using it. Try: python server.py --http-port {args.http_port + 10}")

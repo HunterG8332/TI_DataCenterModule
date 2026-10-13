@@ -19,8 +19,20 @@ typedef struct {
     float    fan_duty_pct;
     bool     fan_enabled;
     uint32_t fan_rpm;
-    uint32_t flags;        /* reserved (faults, mode) */
+    float    heater_pct;   /* power actually being demanded of the emulator (0 when inhibited) */
+    uint32_t flags;        /* TELEM_FLAG_* */
 } telemetry_sample_t;
+
+/* flags bits: heater request/arbitration state, so the dashboard can say why
+ * the heater is off. */
+#define TELEM_FLAG_HEATER_REQUESTED (1u << 0)  /* dashboard switch is on (heartbeat fresh) */
+#define TELEM_FLAG_HEATER_PERMIT    (1u << 1)  /* hardware permit pin asserted */
+#define TELEM_FLAG_HEATER_ACTIVE    (1u << 2)  /* heater enable line high, power applied */
+#define TELEM_FLAG_FAN_STALL        (1u << 3)
+#define TELEM_FLAG_OVER_TEMP        (1u << 4)
+#define TELEM_FLAG_TEMP_INVALID     (1u << 5)
+#define TELEM_FLAG_FAN_DISABLED     (1u << 6)  /* fan enable interlock open */
+#define TELEM_FLAG_HEATER_TRIPPED   (1u << 7)  /* fault latched; switch off then on to re-arm */
 
 void telemetry_init(void);
 

@@ -4,6 +4,7 @@
 #include "bmc_board.h"
 #include "bmc_fan.h"
 #include "bmc_fan_link.h"
+#include "bmc_heater_cmd.h"
 #include "bmc_i2c.h"
 #include "bmc_net.h"
 #include "bmc_stream.h"
@@ -34,12 +35,19 @@ static const char *TAG = "bmc_firm";
 
 #define FAN_LEDC_TIMER    LEDC_TIMER_0
 #define FAN_LEDC_CHANNEL  LEDC_CHANNEL_0
-#define FAN_CONTROL_PERIOD_MS 50  /* also bounds how quickly the enable interlock
+#define HEATER_CMD_LEDC_TIMER   LEDC_TIMER_1
+#define HEATER_CMD_LEDC_CHANNEL LEDC_CHANNEL_1
+#define FAN_CONTROL_PERIOD_MS 50 /* also bounds how quickly the enable interlock
                                         (checked fresh on every bmc_fan_set_duty_pct
                                         call) takes effect */
 #define FAN_TACH_WINDOW_MS 250   /* sliding window: 120 RPM resolution (2 edges/rev) */
 
-#define FAN_STALL_RECOVER_CYCLES 5    /* consecutive nonzero-RPM cycles to clear a stall */
+/* The dashboard resends its request every 250 ms; this many ms of silence
+ * (closed tab, lost link) counts as "switch off". */
+#define HEATER_REQ_TIMEOUT_MS 1000
+#define HEATER_MAX_TEMP_C     FAN_CURVE_HIGH_C   /* operating ceiling */
+
+#define FAN_STALL_RECOVER_CYCLES 5   /* consecutive nonzero-RPM cycles to clear a stall */
 #define FAN_STALL_MIN_DUTY_PCT 10.0f  /* below this the fan may legitimately idle/stop */
 #define FAN_TASK_PRIORITY 3
 #define FAN_TASK_CORE     1
@@ -59,6 +67,9 @@ static volatile float s_fan_duty_pct = 0.0f;
 static volatile bool s_fan_enabled = false;
 static volatile uint32_t s_fan_rpm = 0;
 static volatile bool s_fan_stalled = false;  /* set on stall, cleared when tach returns; any heater enable must check this */
+static volatile bool s_temp_valid = false;
+static volatile float s_heater_pct = 0.0f;   /* applied (post-arbitration) heater demand */
+static volatile uint32_t s_heater_flags = 0; /* TELEM_FLAG_* */
 
 /* Log a fault once when it starts and once when it clears, so a persistent
  * failure doesn't print every cycle. */
@@ -131,6 +142,7 @@ static void sensor_task(void *arg)
         if (temp_valid) {
             s_temp_c = temp_c;  /* raw value, published before the display-only clamp below */
         }
+        s_temp_valid = temp_valid;
         log_fault_edge(&tmp_fault, err, "tmp117 read");
 
         telemetry_sample_t sample = {
@@ -141,6 +153,8 @@ static void sensor_task(void *arg)
             .fan_duty_pct = s_fan_duty_pct,
             .fan_enabled = s_fan_enabled,
             .fan_rpm = s_fan_rpm,
+            .heater_pct = s_heater_pct,
+            .flags = s_heater_flags,
         };
         telemetry_publish(&sample);   /* non-blocking; never waits on the network */
 
@@ -181,6 +195,47 @@ static void sensor_task(void *arg)
  * every FAN_CONTROL_PERIOD_MS. No discrete steps -- duty tracks temperature
  * continuously. */
 
+/* Decides, every control period, whether the dashboard's heater request may
+ * reach the emulator. The heater runs only while the switch is on (fresh
+ * heartbeat) AND the hardware permit is closed AND the fan is enabled and
+ * turning AND the temperature is valid and under the ceiling. A stall,
+ * over-temperature or lost temperature reading latches the heater off until
+ * the dashboard switch is turned off and on again; the permit pin and fan
+ * enable interlock only inhibit while open. */
+static void heater_arbiter(bool *cmd_fault, bool *tripped)
+{
+    float req_pct = 0.0f;
+    bool requested = bmc_stream_heater_request(&req_pct, HEATER_REQ_TIMEOUT_MS);
+    bool permit = board_heater_permit();
+    bool temp_valid = s_temp_valid;
+    bool over_temp = temp_valid && s_temp_c >= HEATER_MAX_TEMP_C;
+    bool fan_ok = s_fan_enabled;
+
+    if (!requested) {
+        *tripped = false;                         /* switch off re-arms */
+    } else if (s_fan_stalled || over_temp || !temp_valid) {
+        *tripped = true;
+    }
+
+    bool allow = requested && permit && fan_ok && !*tripped;
+    float applied = allow ? req_pct : 0.0f;
+
+    board_heater_enable_set(allow);
+    log_fault_edge(cmd_fault, bmc_heater_cmd_set_pct(applied), "bmc_heater_cmd_set_pct");
+
+    uint32_t flags = 0;
+    flags |= requested ? TELEM_FLAG_HEATER_REQUESTED : 0;
+    flags |= permit ? TELEM_FLAG_HEATER_PERMIT : 0;
+    flags |= allow ? TELEM_FLAG_HEATER_ACTIVE : 0;
+    flags |= s_fan_stalled ? TELEM_FLAG_FAN_STALL : 0;
+    flags |= over_temp ? TELEM_FLAG_OVER_TEMP : 0;
+    flags |= !temp_valid ? TELEM_FLAG_TEMP_INVALID : 0;
+    flags |= !fan_ok ? TELEM_FLAG_FAN_DISABLED : 0;
+    flags |= *tripped ? TELEM_FLAG_HEATER_TRIPPED : 0;
+    s_heater_pct = applied;
+    s_heater_flags = flags;
+}
+
 static void fan_task(void *arg)
 {
     //controls the fan speed and reads tachometer
@@ -204,7 +259,8 @@ static void fan_task(void *arg)
         return;
     }
     bool link_ok = true;  /* so the first failed send logs a warning */
-    bool duty_fault = false, rpm_fault = false;
+    bool duty_fault = false, rpm_fault = false, heater_cmd_fault = false;
+    bool heater_tripped = false;
     TickType_t above_floor_since = 0;
     unsigned recover_cycles = 0;
     board_heater_enable_set(false);  /* heater is off until explicitly enabled */
@@ -271,6 +327,8 @@ static void fan_task(void *arg)
         }
         log_fault_edge(&rpm_fault, err, "bmc_fan_read_rpm");
 
+        heater_arbiter(&heater_cmd_fault, &heater_tripped);
+
         vTaskDelay(pdMS_TO_TICKS(FAN_CONTROL_PERIOD_MS));
     }
 }
@@ -280,6 +338,9 @@ void app_main(void)
     board_init();
 
     ESP_ERROR_CHECK(bmc_i2c_init());
+    /* Demanded-power analog out starts at 0% until a controller drives it. */
+    ESP_ERROR_CHECK(bmc_heater_cmd_init(board_heater_cmd_gpio(), HEATER_CMD_LEDC_TIMER,
+                                        HEATER_CMD_LEDC_CHANNEL));
     telemetry_init();
     xTaskCreatePinnedToCore(sensor_task, "tmp117", 8192, NULL, TMP117_TASK_PRIORITY, NULL, TMP117_TASK_CORE);
 

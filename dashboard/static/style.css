@@ -11,6 +11,7 @@
   --s2: #eb6834;   /* power */
   --s3: #1baf7a;   /* fan duty */
   --s4: #4a3aa7;   /* fan speed */
+  --s5: #b5368d;   /* heater power */
   --good: #008300;
   --warn: #a86a00;
   --crit: #d03a39;
@@ -29,6 +30,7 @@
     --s2: #d95926;
     --s3: #199e70;
     --s4: #9085e9;
+    --s5: #d462b0;
     --good: #3fb950;
     --warn: #d9a21b;
     --crit: #e66767;
@@ -47,6 +49,7 @@
   --s2: #d95926;
   --s3: #199e70;
   --s4: #9085e9;
+  --s5: #d462b0;
   --good: #3fb950;
   --warn: #d9a21b;
   --crit: #e66767;
@@ -126,3 +129,34 @@ summary { cursor: pointer; color: var(--text-2); font-weight: 600; }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 th, td { text-align: right; padding: 4px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 th { color: var(--text-3); font-weight: 600; font-size: 12px; }
+
+.heater {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 14px;
+  display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center;
+}
+.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch .track {
+  width: 44px; height: 24px; border-radius: 999px; background: var(--grid); border: 1px solid var(--border);
+  position: relative; transition: background .15s;
+}
+.switch .track::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--text-3); transition: transform .15s, background .15s;
+}
+.switch input:checked + .track { background: var(--s5); border-color: var(--s5); }
+.switch input:checked + .track::after { transform: translateX(20px); background: #fff; }
+.switch input:focus-visible + .track { outline: 2px solid var(--s1); outline-offset: 2px; }
+.heater-power { display: flex; align-items: center; gap: 10px; flex: 1 1 280px; min-width: 240px; }
+.heater-power label { color: var(--text-2); white-space: nowrap; }
+.heater-power input[type="range"] { flex: 1; accent-color: var(--s5); }
+.heater-power output { min-width: 4ch; text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
+.heater-state { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; color: var(--text-2); }
+.heater-state .ico { width: 10px; height: 10px; display: inline-block; background: currentColor; }
+.heater-state[data-state="on"] { color: var(--good); }
+.heater-state[data-state="on"] .ico { border-radius: 50%; }
+.heater-state[data-state="blocked"] { color: var(--warn); }
+.heater-state[data-state="blocked"] .ico { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.heater-state[data-state="fault"] { color: var(--crit); }
+.hnote { flex-basis: 100%; margin: 0; color: var(--text-3); font-size: 12px; min-height: 17px; }

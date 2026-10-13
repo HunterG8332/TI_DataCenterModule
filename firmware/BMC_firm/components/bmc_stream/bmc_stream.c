@@ -17,7 +17,7 @@ static const char *TAG = "bmc_stream";
 #define HEADER_EVERY_N        200
 #define SERVICE_PERIOD_MS     50     /* worst-case latency to notice a HELLO */
 
-#define CSV_HEADER "bmc_id,seq,t_us,temp_c,power_w,fan_duty_pct,fan_en,fan_rpm,drops,flags\n"
+#define CSV_HEADER "bmc_id,seq,t_us,temp_c,power_w,fan_duty_pct,fan_en,fan_rpm,heater_pct,drops,flags\n"
 
 typedef struct {
     struct sockaddr_in addr;
@@ -27,6 +27,48 @@ typedef struct {
 } subscriber_t;
 
 static subscriber_t s_subs[MAX_SUBSCRIBERS];
+
+/* Written by the net task (core 0), read by the control task (core 1). Each
+ * is a single 32-bit word, so no lock is needed; a read that pairs a new
+ * request with an old stamp is off by at most one datagram. */
+static volatile bool s_heater_on;
+static volatile float s_heater_pct;
+static volatile uint32_t s_heater_tick;
+static volatile bool s_heater_seen;
+
+bool bmc_stream_heater_request(float *pct, uint32_t timeout_ms)
+{
+    if (!s_heater_seen || !s_heater_on) {
+        return false;
+    }
+    if ((xTaskGetTickCount() - s_heater_tick) > pdMS_TO_TICKS(timeout_ms)) {
+        return false;
+    }
+    *pct = s_heater_pct;
+    return true;
+}
+
+static void parse_heater(const char *buf, int n)
+{
+    char text[32];
+    int m = n < (int)sizeof(text) - 1 ? n : (int)sizeof(text) - 1;
+    memcpy(text, buf, m);
+    text[m] = '\0';
+    int on = 0;
+    float pct = 0.0f;
+    if (sscanf(text, "HEATER %d %f", &on, &pct) != 2) {
+        return;
+    }
+    if (!(pct > 0.0f)) {                              /* also catches NaN */
+        pct = 0.0f;
+    } else if (pct > 100.0f) {
+        pct = 100.0f;
+    }
+    s_heater_pct = pct;
+    s_heater_on = (on != 0);
+    s_heater_tick = xTaskGetTickCount();
+    s_heater_seen = true;
+}
 
 static void service_hello(int sock)
 {
@@ -38,6 +80,10 @@ static void service_hello(int sock)
         int n = recvfrom(sock, buf, sizeof(buf), MSG_DONTWAIT, (struct sockaddr *)&from, &from_len);
         if (n < 0) {
             return;                                   /* nothing pending */
+        }
+        if (n >= 6 && memcmp(buf, "HEATER", 6) == 0) {
+            parse_heater(buf, n);                     /* no auth: lab demo rack */
+            continue;
         }
         if (n < 5 || memcmp(buf, "HELLO", 5) != 0) {
             continue;
@@ -86,10 +132,10 @@ static int format_record(char *buf, size_t size, const telemetry_sample_t *s)
     if (s->power_valid) {
         snprintf(power, sizeof(power), "%.3f", s->power_w);
     }
-    return snprintf(buf, size, "%s,%lu,%lld,%s,%s,%.1f,%d,%lu,%lu,%lu\n",
+    return snprintf(buf, size, "%s,%lu,%lld,%s,%s,%.1f,%d,%lu,%.1f,%lu,%lu\n",
                     CONFIG_BMC_STREAM_ID, (unsigned long)s->seq, (long long)s->t_us, temp, power,
                     s->fan_duty_pct, s->fan_enabled ? 1 : 0, (unsigned long)s->fan_rpm,
-                    (unsigned long)telemetry_drops(), (unsigned long)s->flags);
+                    s->heater_pct, (unsigned long)telemetry_drops(), (unsigned long)s->flags);
 }
 
 static void send_to(int sock, subscriber_t *sub, const char *data, int len)

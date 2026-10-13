@@ -27,6 +27,23 @@
 </header>
 
 <main>
+  <section class="heater" aria-label="Heater control">
+    <label class="switch">
+      <input type="checkbox" id="heaterSwitch" role="switch">
+      <span class="track" aria-hidden="true"></span>
+      <span class="switch-label">Heater</span>
+    </label>
+    <div class="heater-power">
+      <label for="heaterSlider">Demanded power</label>
+      <input type="range" id="heaterSlider" min="0" max="100" step="1" value="0">
+      <output id="heaterVal" for="heaterSlider">0%</output>
+    </div>
+    <div class="heater-state" id="heaterState" data-state="off" role="status">
+      <span class="ico" aria-hidden="true"></span><span id="heaterStateText">Off</span>
+    </div>
+    <p class="hnote" id="heaterNote"></p>
+  </section>
+
   <section class="charts" id="charts" aria-label="Live charts"></section>
 
   <section class="stats" aria-label="Link statistics">
@@ -42,7 +59,7 @@
     <summary>Latest samples (table view)</summary>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Time (s)</th><th>Seq</th><th>Temp (°C)</th><th>Power (W)</th><th>Fan (%)</th><th>Fan</th><th>RPM</th></tr></thead>
+        <thead><tr><th>Time (s)</th><th>Seq</th><th>Temp (°C)</th><th>Power (W)</th><th>Fan (%)</th><th>Fan</th><th>RPM</th><th>Heater (%)</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>

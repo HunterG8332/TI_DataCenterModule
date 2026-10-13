@@ -8,6 +8,8 @@ const CHARTS = [
   { key: 'fan_duty_pct', title: 'Fan duty',    unit: '%',   color: '--s3', digits: 0, fixed: [0, 100] },
   { key: 'fan_rpm',      title: 'Fan speed',   unit: 'RPM', color: '--s4', digits: 0, minSpan: 500, zero: true },
 ];
+// telemetry `flags` bits (firmware bmc_telemetry.h)
+const F = { REQUESTED: 1, PERMIT: 2, ACTIVE: 4, STALL: 8, OVER_TEMP: 16, TEMP_INVALID: 32, FAN_OFF: 64, TRIPPED: 128 };
 const PAD = { l: 48, r: 12, t: 8, b: 22 };
 const X_STEP = { 30: 5, 60: 10, 300: 60 };
 
@@ -180,10 +182,11 @@ function render() {
   const css = getComputedStyle(document.documentElement);
   const tEnd = viewEnd();
   for (const c of CHARTS) drawChart(c, css, tEnd);
+  updateHeaterState();
   if ($('tbl').open) {
     $('tbody').innerHTML = samples.slice(-15).reverse().map((s) =>
       `<tr><td>${s.t.toFixed(1)}</td><td>${s.seq}</td><td>${fmt(s.temp_c, 3)}</td><td>${fmt(s.power_w, 3)}</td>` +
-      `<td>${fmt(s.fan_duty_pct, 1)}</td><td>${s.fan_en === 0 ? 'off' : 'on'}</td><td>${fmt(s.fan_rpm, 0)}</td></tr>`).join('');
+      `<td>${fmt(s.fan_duty_pct, 1)}</td><td>${s.fan_en === 0 ? 'off' : 'on'}</td><td>${fmt(s.fan_rpm, 0)}</td><td>${fmt(s.heater_pct, 1)}</td></tr>`).join('');
   }
 }
 function schedule() { if (!raf) raf = requestAnimationFrame(render); }
@@ -244,6 +247,67 @@ applyTheme(THEMES.includes(savedTheme) ? savedTheme : 'auto');
 window.addEventListener('resize', schedule);
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', schedule);
 $('tbl').addEventListener('toggle', schedule);
+
+// ---- heater control ---------------------------------------------------------
+// The switch only *requests* the heater. The BMC applies the power only while
+// its hardware permit pin is closed and the fan/temperature checks pass; the
+// state line reports what the BMC actually did (from telemetry flags).
+const HEARTBEAT_MS = 1000;           // server lease is 3 s; BMC drops the request after 1 s of silence
+let heaterBeat = 0, heaterFails = 0, heaterLost = false;
+
+function postHeater() {
+  return fetch('api/heater', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ on: $('heaterSwitch').checked, pct: +$('heaterSlider').value }),
+  }).then((r) => { if (!r.ok) throw new Error(r.status); heaterFails = 0; })
+    .catch(() => {
+      if (++heaterFails >= 2 && $('heaterSwitch').checked) {   // server gone: its lease will lapse, so show off
+        $('heaterSwitch').checked = false;
+        stopHeartbeat();
+        heaterLost = true;
+        schedule();
+      }
+    });
+}
+function stopHeartbeat() { clearInterval(heaterBeat); heaterBeat = 0; }
+
+$('heaterSwitch').addEventListener('change', () => {
+  heaterFails = 0; heaterLost = false;
+  stopHeartbeat();
+  if ($('heaterSwitch').checked) heaterBeat = setInterval(postHeater, HEARTBEAT_MS);
+  postHeater();
+  schedule();
+});
+$('heaterSlider').addEventListener('input', () => {
+  $('heaterVal').textContent = `${$('heaterSlider').value}%`;
+  if ($('heaterSwitch').checked) postHeater();
+});
+
+function updateHeaterState() {
+  const last = samples[samples.length - 1], want = $('heaterSwitch').checked;
+  let state = 'off', text = 'Off', note = '';
+  if (heaterLost) {
+    note = 'Lost contact with the dashboard server: heater request cancelled.';
+  } else if (!last || last.flags == null) {
+    if (want) { state = 'blocked'; text = 'No BMC data'; }
+  } else {
+    const f = last.flags;
+    if (f & F.ACTIVE) { state = 'on'; text = `On · ${fmt(last.heater_pct, 0)}%`; }
+    else if (f & F.TRIPPED) {
+      state = 'fault'; text = 'Tripped';
+      note = ((f & F.STALL) ? 'Fan stalled. ' : '') + ((f & F.OVER_TEMP) ? 'Over temperature. ' : '') +
+             ((f & F.TEMP_INVALID) ? 'Temperature reading lost. ' : '') + 'Switch off, then on, to re-arm.';
+    } else if (want) {
+      state = 'blocked'; text = 'Waiting';
+      if (!(f & F.PERMIT)) note = 'Hardware permit switch is open.';
+      else if (f & F.FAN_OFF) note = 'Fan enable interlock is open.';
+      else if (!(f & F.REQUESTED)) note = 'Request not yet received by the BMC.';
+    }
+  }
+  $('heaterState').dataset.state = state;
+  $('heaterStateText').textContent = text;
+  $('heaterNote').textContent = note;
+}
 
 // ---- live connection -----------------------------------------------------
 function connect() {
