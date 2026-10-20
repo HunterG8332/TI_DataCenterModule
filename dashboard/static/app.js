@@ -3,13 +3,27 @@
 
 const KEEP_SAMPLES = 6000;           // 10 min at 10 Hz
 const CHARTS = [
-  { key: 'temp_c',       title: 'Temperature', unit: '°C',  color: '--s1', digits: 2, minSpan: 4 },
-  { key: 'power_w',      title: 'Power',       unit: 'W',   color: '--s2', digits: 2, minSpan: 1 },
-  { key: 'fan_duty_pct', title: 'Fan duty',    unit: '%',   color: '--s3', digits: 0, fixed: [0, 100] },
-  { key: 'fan_rpm',      title: 'Fan speed',   unit: 'RPM', color: '--s4', digits: 0, minSpan: 500, zero: true },
+  { key: 'plate_c',        title: 'Plate temperature', unit: '°C',  color: '--s1', digits: 2, minSpan: 4 },
+  { key: 'i48_a',          title: 'Load current (48 V)', unit: 'A', color: '--s2', digits: 3, minSpan: 0.5 },
+  { key: 'power_w',        title: 'Input power', unit: 'W',         color: '--s5', digits: 1, minSpan: 5 },
+  { key: 'heater_pct',     title: 'Heater (applied)', unit: '%',    color: '--s2', digits: 0, fixed: [0, 100] },
+  { key: 'fan_demand_pct', title: 'Fan demand (% of reference RPM)', unit: '%', color: '--s3', digits: 0, fixed: [0, 100] },
+  { key: 'fan1_rpm',       title: 'Fan 1 speed', unit: 'RPM',       color: '--s4', digits: 0, minSpan: 500, zero: true },
+  { key: 'fan2_rpm',       title: 'Fan 2 speed', unit: 'RPM',       color: '--s4', digits: 0, minSpan: 500, zero: true },
 ];
-// telemetry `flags` bits (firmware bmc_telemetry.h)
-const F = { REQUESTED: 1, PERMIT: 2, ACTIVE: 4, STALL: 8, OVER_TEMP: 16, TEMP_INVALID: 32, FAN_OFF: 64, TRIPPED: 128 };
+// telemetry `flags` bits (firmware bmc_types.h)
+const F = { REQUESTED: 1, PERMIT: 2, ACTIVE: 4, STALL: 8, OVER_TEMP: 16, TEMP_INVALID: 32, FAN_OFF: 64, TRIPPED: 128,
+            SELFTEST_OK: 256, SAFE: 512, PROFILE: 1024, OT_WARN: 2048, HOOKS: 4096, OT_LOWERED: 8192 };
+const FAULT_NAMES = ['NONE', 'OVER_TEMP', 'TEMP_LOSS', 'TELEM_LOSS', 'I2C_FAULT', 'FAN_STALL', 'SENSOR_STALE',
+                     'RESET_WDT', 'RESET_BROWNOUT', 'RESET_PANIC'];
+const FAULT_TEXT = {
+  OVER_TEMP: 'Plate reached the over-temperature limit',
+  TEMP_LOSS: 'Plate temperature sensor lost or implausible',
+  TELEM_LOSS: 'A required telemetry source stopped answering',
+  I2C_FAULT: 'I2C bus fault (a line is stuck or every device is silent)',
+  FAN_STALL: 'A fan stalled (no tach pulses while driven)',
+  SENSOR_STALE: 'Sensor task stopped delivering fresh data',
+};
 const PAD = { l: 48, r: 12, t: 8, b: 22 };
 const X_STEP = { 30: 5, 60: 10, 300: 60 };
 
@@ -20,6 +34,10 @@ let hoverT = null;
 let gapS = 0.35;                     // break the line when samples are further apart than this
 let serverUp = false;
 let status = null;
+let controlEnabled = true;           // false when the server runs with --no-control
+let heaterNoteSrv = null;            // the BMC's latest refusal of the manual heater request
+const events = [];                   // BMC events, oldest first
+const seenEvents = new Set();
 let raf = 0;
 
 const $ = (id) => document.getElementById(id);
@@ -173,7 +191,8 @@ function drawChart(c, css, tEnd) {
   c.num.textContent = fmt(shown && shown[c.key], c.digits);
   if (!shown) c.meta.textContent = ' ';
   else if (hoverT != null) c.meta.textContent = `${(shown.t - latest.t).toFixed(1)} s · seq ${shown.seq}`;
-  else if (c.key === 'fan_duty_pct') c.meta.textContent = shown.fan_en === 0 ? 'Fan DISABLED (interlock)' : 'Fan enabled';
+  else if (c.key === 'fan_demand_pct') c.meta.textContent = shown.fan_en === 0 ? 'Fan DISABLED (interlock)' : `Target ${fmt(shown.fan_target_rpm, 0)} RPM`;
+  else if (c.key === 'plate_c' && shown.setpoint_c != null) c.meta.textContent = `Setpoint ${fmt(shown.setpoint_c, 1)} °C`;
   else c.meta.textContent = shown[c.key] == null ? 'no valid reading' : ' ';
 }
 
@@ -183,10 +202,12 @@ function render() {
   const tEnd = viewEnd();
   for (const c of CHARTS) drawChart(c, css, tEnd);
   updateHeaterState();
+  updateControls();
   if ($('tbl').open) {
     $('tbody').innerHTML = samples.slice(-15).reverse().map((s) =>
-      `<tr><td>${s.t.toFixed(1)}</td><td>${s.seq}</td><td>${fmt(s.temp_c, 3)}</td><td>${fmt(s.power_w, 3)}</td>` +
-      `<td>${fmt(s.fan_duty_pct, 1)}</td><td>${s.fan_en === 0 ? 'off' : 'on'}</td><td>${fmt(s.fan_rpm, 0)}</td><td>${fmt(s.heater_pct, 1)}</td></tr>`).join('');
+      `<tr><td>${s.t.toFixed(1)}</td><td>${s.seq}</td><td>${s.mode ?? '—'}</td><td>${fmt(s.plate_c, 3)}</td>` +
+      `<td>${fmt(s.i48_a, 3)}</td><td>${fmt(s.power_w, 2)}</td><td>${fmt(s.heater_pct, 1)}</td>` +
+      `<td>${fmt(s.fan_demand_pct, 1)}</td><td>${fmt(s.fan1_rpm, 0)}</td><td>${fmt(s.fan2_rpm, 0)}</td></tr>`).join('');
   }
 }
 function schedule() { if (!raf) raf = requestAnimationFrame(render); }
@@ -212,6 +233,17 @@ function applyStatus(s) {
   $('stDrops').classList.toggle('bad', s.bmc_drops > 0);
   $('stRestarts').textContent = s.restarts;
   $('stLog').textContent = s.log_file || 'off';
+  const c = s.continuity;
+  $('stGap').textContent = c ? `${c.max_gap_s} s` : '—';
+  $('stNonmono').textContent = c ? c.nonmonotonic : '—';
+  $('stMissing').textContent = c ? c.missing_required : '—';
+  $('stNonmono').classList.toggle('bad', !!c && c.nonmonotonic > 0);
+  $('stMissing').classList.toggle('bad', !!c && c.missing_required > 0);
+  $('stGap').classList.toggle('bad', !!c && c.max_gap_s > 0.15);
+  $('evLog').textContent = s.event_log ? `logging to ${s.event_log}` : '';
+  controlEnabled = s.control_enabled !== false;
+  heaterNoteSrv = s.heater_note;
+  schedule();
 }
 
 // ---- controls ------------------------------------------------------------
@@ -294,19 +326,141 @@ function updateHeaterState() {
     const f = last.flags;
     if (f & F.ACTIVE) { state = 'on'; text = `On · ${fmt(last.heater_pct, 0)}%`; }
     else if (f & F.TRIPPED) {
-      state = 'fault'; text = 'Tripped';
-      note = ((f & F.STALL) ? 'Fan stalled. ' : '') + ((f & F.OVER_TEMP) ? 'Over temperature. ' : '') +
-             ((f & F.TEMP_INVALID) ? 'Temperature reading lost. ' : '') + 'Switch off, then on, to re-arm.';
+      state = 'fault'; text = 'Failsafe';
+      note = `Failsafe is latched (${FAULT_NAMES[last.fault_code] || '?'}). Acknowledge it above once the plate is cool.`;
     } else if (want) {
       state = 'blocked'; text = 'Waiting';
-      if (!(f & F.PERMIT)) note = 'Hardware permit switch is open.';
+      if (last.mode !== 'CHAR') note = 'The manual heater only works in Characterization mode (run the self-test, then choose the mode).';
+      else if (!(f & F.PERMIT)) note = 'Hardware permit switch is open.';
       else if (f & F.FAN_OFF) note = 'Fan enable interlock is open.';
+      else if (f & F.TEMP_INVALID) note = 'Plate temperature unreadable: no heating while blind.';
       else if (!(f & F.REQUESTED)) note = 'Request not yet received by the BMC.';
+      if (heaterNoteSrv) note += ` (BMC: ${heaterNoteSrv})`;
     }
   }
   $('heaterState').dataset.state = state;
   $('heaterStateText').textContent = text;
   $('heaterNote').textContent = note;
+}
+
+// ---- state banner, operation controls ---------------------------------------------
+// The BMC owns every decision. These controls only send requests; what is allowed is
+// decided by the BMC and shown here from its telemetry (mode, flags, fault code).
+function sendCmd(text) {
+  $('cmdReply').classList.remove('bad');
+  $('cmdReply').textContent = `> ${text}`;
+  return fetch('api/cmd', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd: text }),
+  }).then((r) => r.json())
+    .then((body) => {
+      const msg = body.reply || body.error || 'no answer';
+      $('cmdReply').textContent = `> ${text}   →   ${msg}`;
+      $('cmdReply').classList.toggle('bad', !body.ok);
+      return body;
+    })
+    .catch(() => {
+      $('cmdReply').textContent = `> ${text}   →   dashboard server unreachable`;
+      $('cmdReply').classList.add('bad');
+      return { ok: false };
+    });
+}
+
+const MODE_NOTE = {
+  STANDBY: 'Safe resting state: heater off.',
+  SELFTEST: 'Self-test running (about 7 s, fans spin up one at a time).',
+  CHAR: 'Open-loop: manual heater and fan.',
+  REACTIVE: 'Closed loop on plate temperature (baseline).',
+  PROACTIVE: 'Feedforward from load current plus trim.',
+  FAILSAFE: 'Heater off, fans at full speed, latched until acknowledged.',
+};
+
+function updateControls() {
+  const last = samples[samples.length - 1];
+  const bar = $('statebar');
+  const mode = last && last.mode;
+  const f = last && last.flags != null ? last.flags : 0;
+  if (!last || !mode) {
+    bar.dataset.state = 'unknown';
+    $('modeName').textContent = 'No data';
+    $('modeNote').textContent = '';
+    $('faultLine').hidden = true;
+  } else {
+    bar.dataset.state = mode === 'FAILSAFE' ? 'failsafe' : mode === 'SELFTEST' ? 'selftest'
+      : mode === 'STANDBY' ? 'standby' : 'active';
+    $('modeName').textContent = mode === 'CHAR' ? 'CHARACTERIZATION' : mode;
+    $('modeNote').textContent = MODE_NOTE[mode] || '';
+    const fl = $('faultLine');
+    if (mode === 'FAILSAFE') {
+      const name = FAULT_NAMES[last.fault_code] || '?';
+      fl.hidden = false;
+      fl.textContent = `Cause: ${name} — ${FAULT_TEXT[name] || ''}. ` +
+        (f & F.SAFE ? 'Plate is safe to handle: you can acknowledge.'
+          : `Waiting for the plate to fall below the safe-to-handle temperature (now ${fmt(last.plate_c, 1)} °C).`);
+    } else {
+      fl.hidden = true;
+    }
+  }
+
+  const enabled = controlEnabled && !!last;
+  document.querySelectorAll('[data-mode]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(!!mode && b.dataset.mode === mode));
+    const target = b.dataset.mode;
+    b.disabled = !enabled || mode === 'FAILSAFE' || mode === 'SELFTEST' ||
+      (target !== 'STANDBY' && !(f & F.SELFTEST_OK) && mode !== target);
+  });
+  $('btnSelftest').disabled = !enabled || mode !== 'STANDBY';
+  const running = !!(f & F.PROFILE);
+  const actuating = mode === 'CHAR' || mode === 'REACTIVE' || mode === 'PROACTIVE';
+  $('btnProfStart').disabled = !enabled || !actuating || running;
+  $('profileSel').disabled = !enabled || running;
+  $('btnProfStop').disabled = !enabled || !running;
+  $('btnSetpoint').disabled = !enabled || running || mode === 'FAILSAFE' || mode === 'SELFTEST';
+  $('setpoint').disabled = $('btnSetpoint').disabled;
+  $('btnAck').disabled = !enabled || mode !== 'FAILSAFE' || !(f & F.SAFE);
+  $('hooks').hidden = !(f & F.HOOKS);
+  $('selftestNote').textContent = f & F.SELFTEST_OK ? 'Passed: actuating modes are available.'
+    : mode === 'STANDBY' ? 'Not passed yet: required before any heat.' : '';
+  $('runNote').textContent = running && last.run_ms != null ? `Running: ${(last.run_ms / 1000).toFixed(0)} s` : '';
+  $('ackNote').textContent = mode === 'FAILSAFE'
+    ? (f & F.SAFE ? 'Ready: acknowledging returns to Standby; the self-test must pass again before heat.'
+      : 'Not yet: the plate must stay below the safe-to-handle temperature for 5 s.')
+    : 'Only used after a failsafe.';
+  if (!controlEnabled) $('cmdReply').textContent = 'View only: the server was started with --no-control.';
+}
+
+document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => sendCmd(`MODE ${b.dataset.mode}`)));
+$('btnSelftest').addEventListener('click', () => sendCmd('SELFTEST'));
+$('btnAck').addEventListener('click', () => sendCmd('ACK'));
+$('btnProfStop').addEventListener('click', () => sendCmd('PROFILE STOP'));
+$('btnProfStart').addEventListener('click', async () => {
+  const pre = await sendCmd(`PROFILE PRESET ${$('profileSel').value}`);
+  if (pre.ok) await sendCmd('PROFILE START');
+});
+$('btnSetpoint').addEventListener('click', () => sendCmd(`SETPOINT ${+$('setpoint').value}`));
+$('btnOt').addEventListener('click', () => sendCmd(`TESTSET OT ${+$('otLimit').value}`));
+document.querySelectorAll('[data-inject]').forEach((b) => b.addEventListener('click', () => sendCmd(`TESTINJECT ${b.dataset.inject}`)));
+
+// ---- events -----------------------------------------------------------------------
+const SEVERITY = { FAILSAFE_ENTER: 'crit', WARN: 'warn', SAFE_TO_HANDLE: 'good', ACK_OK: 'good', RESET: 'warn' };
+function addEvent(ev) {
+  const key = `${ev.boot}:${ev.id}`;
+  if (seenEvents.has(key)) return;
+  seenEvents.add(key);
+  events.push(ev);
+  if (events.length > 300) events.shift();
+  renderEvents();
+}
+function renderEvents() {
+  const el = $('evList');
+  if (!events.length) { el.innerHTML = '<li class="empty">No events yet.</li>'; return; }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  el.innerHTML = events.slice().reverse().slice(0, 100).map((e) => {
+    const t = (e.t_us / 1e6).toFixed(1);
+    const run = e.run_ms != null ? ` · run ${(e.run_ms / 1000).toFixed(1)} s` : '';
+    const sev = e.type === 'SELFTEST' ? (e.code === 'PASS' ? 'good' : 'crit') : (SEVERITY[e.type] || '');
+    return `<li data-sev="${sev}"><span class="t">${t} s${run}</span><span class="ty">${esc(e.type)}</span>` +
+           `<span class="cd">${esc(e.code)}</span><span class="d">${esc(e.detail)}</span></li>`;
+  }).join('');
 }
 
 // ---- live connection -----------------------------------------------------
@@ -315,12 +469,14 @@ function connect() {
   es.addEventListener('open', () => { serverUp = true; });
   es.addEventListener('error', () => { serverUp = false; setLink('offline', 'Dashboard server unreachable'); });
   es.addEventListener('sample', (e) => { ingest(JSON.parse(e.data)); schedule(); });
+  es.addEventListener('bmcevent', (e) => addEvent(JSON.parse(e.data)));
   es.addEventListener('status', (e) => { serverUp = true; applyStatus(JSON.parse(e.data)); });
 }
 fetch('api/history?n=' + KEEP_SAMPLES)
   .then((r) => r.json())
-  .then((h) => { h.samples.forEach(ingest); schedule(); })
+  .then((h) => { h.samples.forEach(ingest); (h.events || []).forEach(addEvent); schedule(); })
   .catch(() => { /* server will be retried by EventSource */ })
   .finally(connect);
+renderEvents();
 schedule();
 })();

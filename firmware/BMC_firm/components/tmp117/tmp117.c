@@ -5,7 +5,9 @@
 #define TMP117_DEVICE_ID        0x0117
 #define TMP117_TEMP_LSB_C       0.0078125f
 #define TMP117_SCL_SPEED_HZ     400000
-#define TMP117_XFER_TIMEOUT_MS  1000
+/* A present device answers in well under a millisecond. A short timeout keeps a
+ * missing device or a hung bus from stalling the 10 Hz sensor loop. */
+#define TMP117_XFER_TIMEOUT_MS  20
 
 #define TMP117_REG_CONFIG       0x01
 /* Continuous mode, CONV = 000, AVG = 00 (no averaging): a new result about every
@@ -31,6 +33,11 @@ static esp_err_t read_reg16(i2c_master_dev_handle_t dev, uint8_t reg, uint16_t *
     return ESP_OK;
 }
 
+esp_err_t tmp117_configure(tmp117_t *dev)
+{
+    return write_reg16(dev->i2c_dev, TMP117_REG_CONFIG, TMP117_CONFIG_FAST);
+}
+
 esp_err_t tmp117_init(i2c_master_bus_handle_t bus, uint8_t i2c_addr, tmp117_t *dev)
 {
     i2c_device_config_t dev_cfg = {
@@ -45,13 +52,17 @@ esp_err_t tmp117_init(i2c_master_bus_handle_t bus, uint8_t i2c_addr, tmp117_t *d
 
     uint16_t id;
     err = read_reg16(dev->i2c_dev, TMP117_REG_DEVICE_ID, &id);
+    if (err == ESP_OK && id != TMP117_DEVICE_ID) {
+        err = ESP_ERR_NOT_FOUND;
+    }
+    if (err == ESP_OK) {
+        err = tmp117_configure(dev);
+    }
     if (err != ESP_OK) {
-        return err;
+        i2c_master_bus_rm_device(dev->i2c_dev);      /* leave nothing behind so init can be retried */
+        dev->i2c_dev = NULL;
     }
-    if (id != TMP117_DEVICE_ID) {
-        return ESP_ERR_NOT_FOUND;
-    }
-    return write_reg16(dev->i2c_dev, TMP117_REG_CONFIG, TMP117_CONFIG_FAST);
+    return err;
 }
 
 esp_err_t tmp117_read_c(tmp117_t *dev, float *out_temp_c)

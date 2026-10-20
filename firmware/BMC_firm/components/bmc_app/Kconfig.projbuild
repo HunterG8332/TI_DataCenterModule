@@ -1,0 +1,25 @@
+menu "BMC application"
+
+    config BMC_TEST_HOOKS
+        bool "Enable validation test hooks (TESTSET / TESTINJECT commands)"
+        default y
+        help
+            Lets the host lower the over-temperature limit and force fault
+            conditions, which the validation plan needs (FSR 3.2.5.1.2 and
+            3.2.5.1.3). The limit can only be lowered, never raised above 120 C,
+            and every record carries a flag while the hooks are compiled in.
+            Turn this OFF for the final demonstration build.
+
+    config BMC_INLET_SENSOR
+        bool "A second TMP117 measures inlet (ambient) air"
+        default n
+        help
+            Adds the inlet temperature to telemetry and the self-test and uses
+            it for the "start from ambient" check before a profile run.
+
+    config BMC_INLET_I2C_ADDR
+        hex "I2C address of the inlet TMP117"
+        depends on BMC_INLET_SENSOR
+        default 0x49
+
+endmenu

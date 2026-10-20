@@ -2,3 +2,7 @@
 # dashboard
 dashboard/logs/
 __pycache__/
+
+# firmware host tests
+firmware/BMC_firm/test_host/run_tests
+firmware/BMC_firm/test_host/*.o

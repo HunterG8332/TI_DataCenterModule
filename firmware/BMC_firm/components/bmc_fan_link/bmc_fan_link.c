@@ -1,7 +1,7 @@
 #include "bmc_fan_link.h"
 
 #define FAN_LINK_SCL_SPEED_HZ    400000
-#define FAN_LINK_XFER_TIMEOUT_MS 100
+#define FAN_LINK_XFER_TIMEOUT_MS 10   /* the peer is optional; never hold the bus long waiting for it */
 
 esp_err_t bmc_fan_link_init(i2c_master_bus_handle_t bus, uint8_t i2c_addr, bmc_fan_link_t *dev)
 {

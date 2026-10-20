@@ -730,6 +730,15 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of Partition Table
 
 #
+# BMC application
+#
+# default:
+CONFIG_BMC_TEST_HOOKS=y
+# default:
+# CONFIG_BMC_INLET_SENSOR is not set
+# end of BMC application
+
+#
 # BMC network
 #
 # default:

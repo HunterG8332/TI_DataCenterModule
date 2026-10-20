@@ -1,5 +1,6 @@
 #include "bmc_fan.h"
 
+#include <string.h>
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -20,6 +21,7 @@
 esp_err_t bmc_fan_init(bmc_fan_t *fan, int pwm_gpio, int tach_gpio, int enable_gpio,
                         ledc_timer_t ledc_timer, ledc_channel_t ledc_channel)
 {
+    memset(fan, 0, sizeof(*fan));   /* tach ring/state must start zeroed (callers used to pass stack garbage) */
     fan->ledc_channel = ledc_channel;
     fan->enable_gpio = enable_gpio;
 

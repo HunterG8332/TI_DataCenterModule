@@ -27,11 +27,80 @@
 </header>
 
 <main>
-  <section class="heater" aria-label="Heater control">
+  <section class="statebar" id="statebar" data-state="unknown" role="status" aria-label="BMC state">
+    <div class="state-main">
+      <span class="ico" aria-hidden="true"></span>
+      <span class="state-mode" id="modeName">No data</span>
+      <span class="state-note" id="modeNote"></span>
+    </div>
+    <div class="state-faults" id="faultLine" hidden></div>
+  </section>
+
+  <section class="ops" aria-label="Operation">
+    <div class="ops-group">
+      <span class="k">1. Self-test</span>
+      <button id="btnSelftest">Run self-test</button>
+      <span class="ops-note" id="selftestNote">Required before any heat.</span>
+    </div>
+    <div class="ops-group">
+      <span class="k">2. Mode</span>
+      <div class="seg" role="group" aria-label="Mode">
+        <button data-mode="STANDBY">Standby</button>
+        <button data-mode="CHAR">Characterization</button>
+        <button data-mode="REACTIVE">Reactive</button>
+        <button data-mode="PROACTIVE">Proactive</button>
+      </div>
+    </div>
+    <div class="ops-group">
+      <span class="k">3. Profile</span>
+      <select id="profileSel" aria-label="Load profile">
+        <option value="1">1 · Scenario 4.1 (60 s idle, 10 min full, 5 min idle)</option>
+        <option value="2">2 · Smoke test (10 s idle, 30 s at 50 %, 20 s idle)</option>
+        <option value="3">3 · Repeatability sweep (0/25/50/75/100 %)</option>
+      </select>
+      <button id="btnProfStart">Load + start</button>
+      <button id="btnProfStop">Stop</button>
+      <span class="ops-note" id="runNote"></span>
+    </div>
+    <div class="ops-group">
+      <span class="k">Setpoint</span>
+      <input type="number" id="setpoint" min="20" max="110" step="0.5" value="60" aria-label="Plate setpoint in degrees C">
+      <span>°C</span>
+      <button id="btnSetpoint">Set</button>
+      <span class="ops-note">Locked while a profile runs.</span>
+    </div>
+    <div class="ops-group ack">
+      <span class="k">Fault</span>
+      <button id="btnAck" disabled>Acknowledge fault</button>
+      <span class="ops-note" id="ackNote">Only available once the plate is below the safe-to-handle temperature.</span>
+    </div>
+    <p class="cmdline" id="cmdReply" role="status" aria-live="polite"></p>
+  </section>
+
+  <details class="hooks" id="hooks" hidden>
+    <summary>Validation test hooks (this firmware build has them enabled)</summary>
+    <div class="ops-group">
+      <span class="k">Over-temp limit</span>
+      <input type="number" id="otLimit" min="20" max="120" step="1" value="45" aria-label="Lowered over-temperature limit">
+      <span>°C</span>
+      <button id="btnOt">Lower limit</button>
+    </div>
+    <div class="ops-group">
+      <span class="k">Force a fault</span>
+      <button data-inject="OT">Over-temp</button>
+      <button data-inject="TEMP_LOSS">Plate sensor loss</button>
+      <button data-inject="TELEM">Telemetry loss</button>
+      <button data-inject="I2C">I2C fault</button>
+      <button data-inject="STALL">Fan stall</button>
+      <button data-inject="CLEAR">Clear forced faults</button>
+    </div>
+  </details>
+
+  <section class="heater" aria-label="Manual heater (Characterization mode)">
     <label class="switch">
       <input type="checkbox" id="heaterSwitch" role="switch">
       <span class="track" aria-hidden="true"></span>
-      <span class="switch-label">Heater</span>
+      <span class="switch-label">Manual heater</span>
     </label>
     <div class="heater-power">
       <label for="heaterSlider">Demanded power</label>
@@ -52,14 +121,22 @@
     <div><span class="k">Lost in transit</span><span class="v" id="stLost">—</span></div>
     <div><span class="k">Dropped by BMC</span><span class="v" id="stDrops">—</span></div>
     <div><span class="k">BMC restarts</span><span class="v" id="stRestarts">—</span></div>
+    <div><span class="k">Longest gap</span><span class="v" id="stGap">—</span></div>
+    <div><span class="k">Out-of-order stamps</span><span class="v" id="stNonmono">—</span></div>
+    <div><span class="k">Records missing a field</span><span class="v" id="stMissing">—</span></div>
     <div><span class="k">Logging to</span><span class="v" id="stLog">—</span></div>
+  </section>
+
+  <section class="events" aria-label="Event log">
+    <h2>Events <small id="evLog"></small></h2>
+    <ol id="evList" class="evlist"></ol>
   </section>
 
   <details id="tbl">
     <summary>Latest samples (table view)</summary>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Time (s)</th><th>Seq</th><th>Temp (°C)</th><th>Power (W)</th><th>Fan (%)</th><th>Fan</th><th>RPM</th><th>Heater (%)</th></tr></thead>
+        <thead><tr><th>Time (s)</th><th>Seq</th><th>Mode</th><th>Plate (°C)</th><th>Load (A)</th><th>Power (W)</th><th>Heater (%)</th><th>Fan demand (%)</th><th>Fan 1 RPM</th><th>Fan 2 RPM</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
