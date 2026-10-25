@@ -20,7 +20,6 @@ static bool s_fan_fault[BMC_FAN_COUNT];
 esp_err_t act_init(void)
 {
     /* Heater first, so nothing below can leave it in an unknown state. */
-    board_heater_enable_set(false);
     esp_err_t err = bmc_heater_cmd_init(board_heater_cmd_gpio(), HEATER_CMD_LEDC_TIMER, HEATER_CMD_LEDC_CHANNEL);
     if (err != ESP_OK) {
         return err;
@@ -56,14 +55,8 @@ void act_apply(const act_cmd_t *c)
         return;
     }
 
-    /* Heater: removing power goes enable-first, applying it goes level-first. */
-    if (!c->heater_enable) {
-        board_heater_enable_set(false);
-        bmc_heater_cmd_set_pct(0.0f);
-    } else {
-        bmc_heater_cmd_set_pct(c->heater_pct);
-        board_heater_enable_set(true);
-    }
+    /* Heater: the command level is the only control; zero means off. */
+    bmc_heater_cmd_set_pct(c->heater_enable ? c->heater_pct : 0.0f);
 
     for (int i = 0; i < BMC_FAN_COUNT; i++) {
         esp_err_t err = bmc_fan_set_duty_pct(&s_fan[i], c->fan_duty[i]);

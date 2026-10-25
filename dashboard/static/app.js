@@ -191,7 +191,7 @@ function drawChart(c, css, tEnd) {
   c.num.textContent = fmt(shown && shown[c.key], c.digits);
   if (!shown) c.meta.textContent = ' ';
   else if (hoverT != null) c.meta.textContent = `${(shown.t - latest.t).toFixed(1)} s · seq ${shown.seq}`;
-  else if (c.key === 'fan_demand_pct') c.meta.textContent = shown.fan_en === 0 ? 'Fan DISABLED (interlock)' : `Target ${fmt(shown.fan_target_rpm, 0)} RPM`;
+  else if (c.key === 'fan_demand_pct') c.meta.textContent = shown.fan_en === 0 ? 'Fan DISABLED (run jumper open)' : `Target ${fmt(shown.fan_target_rpm, 0)} RPM`;
   else if (c.key === 'plate_c' && shown.setpoint_c != null) c.meta.textContent = `Setpoint ${fmt(shown.setpoint_c, 1)} °C`;
   else c.meta.textContent = shown[c.key] == null ? 'no valid reading' : ' ';
 }
@@ -331,6 +331,7 @@ function updateHeaterState() {
     } else if (want) {
       state = 'blocked'; text = 'Waiting';
       if (last.mode !== 'CHAR') note = 'The manual heater only works in Characterization mode (run the self-test, then choose the mode).';
+      else if (!(f & F.PERMIT) && (f & F.FAN_OFF)) { state = 'fault'; text = 'Inhibited (jumper)'; note = 'Run jumper (GPIO15) is open: fans forced to 0 RPM and heater off. Replace the jumper to resume.'; }
       else if (!(f & F.PERMIT)) note = 'Hardware permit switch is open.';
       else if (f & F.FAN_OFF) note = 'Fan enable interlock is open.';
       else if (f & F.TEMP_INVALID) note = 'Plate temperature unreadable: no heating while blind.';
@@ -367,7 +368,7 @@ function sendCmd(text) {
 
 const MODE_NOTE = {
   STANDBY: 'Safe resting state: heater off.',
-  SELFTEST: 'Self-test running (about 7 s, fans spin up one at a time).',
+  SELFTEST: 'Self-test running (about 10 s, fans spin up one at a time).',
   CHAR: 'Open-loop: manual heater and fan.',
   REACTIVE: 'Closed loop on plate temperature (baseline).',
   PROACTIVE: 'Feedforward from load current plus trim.',

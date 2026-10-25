@@ -134,7 +134,7 @@ static void supervisor_task(void *arg)
         in.safety.i2c_stuck = sn.i2c_stuck;
         in.safety.sensor_age_ms = now_ms - sn.t_ms;
         in.safety.fan_interlock_ok = interlock;
-        in.safety.heater_permit = board_heater_permit();
+        in.safety.heater_permit = board_run_jumper_closed();
         in.inlet_fitted = sn.inlet_fitted;
         in.inlet_valid = sn.inlet.valid;
         in.inlet_c = sn.inlet_c;
