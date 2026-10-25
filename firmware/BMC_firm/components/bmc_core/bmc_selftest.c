@@ -4,8 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#define COAST_MS 1500
-
 static const float FAN_MAX[BMC_FAN_COUNT] = { BMC_FAN1_MAX_RPM, BMC_FAN2_MAX_RPM };
 
 static void fail(bmc_selftest_t *t, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
@@ -121,7 +119,7 @@ void bmc_selftest_step(bmc_selftest_t *t, const selftest_in_t *in, selftest_out_
         }
         break;
     case ST_COAST:
-        if (elapsed >= COAST_MS) {
+        if (elapsed >= BMC_SELFTEST_COAST_MS) {
             t->stage = ST_FAN2;
             t->stage_ms = in->now_ms;
             out->fan_duty[1] = BMC_SELFTEST_FAN_DUTY_PCT;

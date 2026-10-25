@@ -4,6 +4,7 @@
 #include "bmc_pid.h"
 #include "bmc_profile.h"
 #include "bmc_sample.h"
+#include "bmc_selftest.h"
 #include "bmc_stall.h"
 #include "test_util.h"
 
@@ -297,8 +298,41 @@ static void test_fmt(void)
     CHECK_STR(line, "EVENT,9,18340000,,FAILSAFE_ENTER,OVER_TEMP,plate_c=120.3 mode=REACTIVE\n");
 }
 
+/* ---- self-test with a slowly coasting fan ----------------------------------------- */
+static void test_selftest_spindown(void)
+{
+    /* Fans spin up quickly but coast down slowly (time constant 7.8 s, like the bench fan that
+     * still read about 2100 RPM when the second fan test ended after a 1.5 s gap). */
+    const float max_rpm[2] = { BMC_FAN1_MAX_RPM, BMC_FAN2_MAX_RPM };
+    const float tau_s = 7.8f, dt = 0.05f;
+    bmc_selftest_t t;
+    selftest_in_t in;
+    selftest_out_t out;
+    memset(&in, 0, sizeof(in));
+    memset(&out, 0, sizeof(out));
+    in.plate_valid = true; in.plate_c = 25.0f; in.ina_valid = true; in.fan_interlock_ok = true;
+    in.now_ms = 1000;
+    bmc_selftest_start(&t, &in);
+    float rpm[2] = { 0, 0 };
+    uint32_t start = in.now_ms;
+    for (int i = 0; i < 600 && !out.done; i++) {
+        in.now_ms += 50;
+        for (int k = 0; k < 2; k++) {
+            float target = out.fan_duty[k] / 100.0f * max_rpm[k];
+            rpm[k] = target > rpm[k] ? rpm[k] + 0.5f * (target - rpm[k]) : rpm[k] * expf(-dt / tau_s);
+            in.fan[k].rpm = (uint32_t)rpm[k];
+            in.fan[k].window_full = true;
+        }
+        bmc_selftest_step(&t, &in, &out);
+    }
+    CHECK(out.done && out.pass);                              /* the slow spin-down no longer reads as cross-talk */
+    CHECK(in.now_ms - start >= 2 * BMC_SELFTEST_FAN_MS + BMC_SELFTEST_COAST_MS);   /* the gap really is there */
+    CHECK(BMC_SELFTEST_COAST_MS >= 4000);
+}
+
 void run_core_tests(void)
 {
+    SUITE("selftest");   test_selftest_spindown();
     SUITE("pid");        test_pid();
     SUITE("fanrpm");     test_fanrpm();
     SUITE("stall");      test_stall();

@@ -52,6 +52,7 @@
 #define BMC_SELFTEST_V48_MAX        52.8f
 #define BMC_SELFTEST_FAN_DUTY_PCT   50.0f
 #define BMC_SELFTEST_FAN_MS         2500
+#define BMC_SELFTEST_COAST_MS       5000   /* both fans off between the two fan tests so the first can spin down */
 #define BMC_SELFTEST_FAN_MIN_FRAC   0.25f  /* driven fan must exceed this fraction of its max RPM */
 #define BMC_SELFTEST_FAN_CROSS_FRAC 0.50f  /* the idle fan's RPM must stay under this fraction of the driven fan's RPM */
 

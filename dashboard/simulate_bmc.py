@@ -209,7 +209,7 @@ class Sim:
                 return err("latched")
             if self.mode != "STANDBY":
                 return err("bad_state")
-            self.mode, self.selftest_ok, self.selftest_end = "SELFTEST", False, self.now + 6.5
+            self.mode, self.selftest_ok, self.selftest_end = "SELFTEST", False, self.now + 10.1
             return ok("started")
         if verb == "MODE" and len(args) == 1 and args[0] in ("STANDBY", "CHAR", "REACTIVE", "PROACTIVE"):
             tgt = args[0]
