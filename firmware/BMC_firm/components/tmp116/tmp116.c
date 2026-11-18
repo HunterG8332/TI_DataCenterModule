@@ -1,0 +1,79 @@
+#include "tmp116.h"
+
+#define TMP116_REG_TEMP         0x00
+#define TMP116_REG_DEVICE_ID    0x0F
+/* DID 0x116; the top nibble of the ID register is a silicon revision. */
+#define TMP116_DEVICE_ID        0x0116
+#define TMP116_DID_MASK         0x0FFF
+#define TMP116_TEMP_LSB_C       0.0078125f
+#define TMP116_SCL_SPEED_HZ     400000
+/* A present device answers in well under a millisecond. A short timeout keeps a
+ * missing device or a hung bus from stalling the 10 Hz sensor loop. */
+#define TMP116_XFER_TIMEOUT_MS  20
+
+#define TMP116_REG_CONFIG       0x01
+/* Continuous mode, CONV = 000, AVG = 00 (no averaging): a new result about every
+ * 15.5 ms. The power-on default (0x0220) is 8x averaging on a 1 s cycle, which
+ * only yields a fresh value once per second -- too slow for 10 Hz telemetry. */
+#define TMP116_CONFIG_FAST      0x0000
+
+static esp_err_t write_reg16(i2c_master_dev_handle_t dev, uint8_t reg, uint16_t value)
+{
+    uint8_t tx[3] = { reg, (uint8_t)(value >> 8), (uint8_t)(value & 0xFF) };
+    return i2c_master_transmit(dev, tx, sizeof(tx), TMP116_XFER_TIMEOUT_MS);
+}
+
+static esp_err_t read_reg16(i2c_master_dev_handle_t dev, uint8_t reg, uint16_t *out)
+{
+    uint8_t rx[2];
+    esp_err_t err = i2c_master_transmit_receive(dev, &reg, 1, rx, sizeof(rx),
+                                                 TMP116_XFER_TIMEOUT_MS);
+    if (err != ESP_OK) {
+        return err;
+    }
+    *out = ((uint16_t)rx[0] << 8) | rx[1];
+    return ESP_OK;
+}
+
+esp_err_t tmp116_configure(tmp116_t *dev)
+{
+    return write_reg16(dev->i2c_dev, TMP116_REG_CONFIG, TMP116_CONFIG_FAST);
+}
+
+esp_err_t tmp116_init(i2c_master_bus_handle_t bus, uint8_t i2c_addr, tmp116_t *dev)
+{
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = i2c_addr,
+        .scl_speed_hz = TMP116_SCL_SPEED_HZ,
+    };
+    esp_err_t err = i2c_master_bus_add_device(bus, &dev_cfg, &dev->i2c_dev);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    uint16_t id;
+    err = read_reg16(dev->i2c_dev, TMP116_REG_DEVICE_ID, &id);
+    if (err == ESP_OK && (id & TMP116_DID_MASK) != TMP116_DEVICE_ID) {
+        err = ESP_ERR_NOT_FOUND;
+    }
+    if (err == ESP_OK) {
+        err = tmp116_configure(dev);
+    }
+    if (err != ESP_OK) {
+        i2c_master_bus_rm_device(dev->i2c_dev);      /* leave nothing behind so init can be retried */
+        dev->i2c_dev = NULL;
+    }
+    return err;
+}
+
+esp_err_t tmp116_read_c(tmp116_t *dev, float *out_temp_c)
+{
+    uint16_t raw;
+    esp_err_t err = read_reg16(dev->i2c_dev, TMP116_REG_TEMP, &raw);
+    if (err != ESP_OK) {
+        return err;
+    }
+    *out_temp_c = (int16_t)raw * TMP116_TEMP_LSB_C;
+    return ESP_OK;
+}

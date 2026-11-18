@@ -2,7 +2,8 @@
   "idf.currentSetup": "C:\\esp\\v6.1\\esp-idf",
   "idf.flashType": "UART",
   "idf.customExtraVars": {
-    "OPENOCD_SCRIPTS": "C:\\Users\\willi\\.espressif/tools/openocd-esp32/v0.12.0-esp32-20240318/openocd-esp32/share/openocd/scripts"
+    "OPENOCD_SCRIPTS": "C:\\Users\\willi\\.espressif/tools/openocd-esp32/v0.12.0-esp32-20240318/openocd-esp32/share/openocd/scripts",
+    "IDF_TARGET": "esp32s3"
   },
   "clangd.path": "C:\\Espressif\\tools\\esp-clangd\\esp-21.1.3_20260408\\esp-clangd\\bin\\clangd.exe",
   "clangd.arguments": [
@@ -10,9 +11,9 @@
     "--query-driver=**",
     "--compile-commands-dir=c:\\Users\\willi\\OneDrive\\Desktop\\Capstone\\firmware\\BMC_firm\\build"
   ],
-  "idf.port": "COM9",
+  "idf.port": "COM10",
   "idf.openOcdConfigs": [
     "interface/ftdi/esp_ftdi.cfg",
-    "target/esp32.cfg"
+    "target/esp32s3.cfg"
   ]
 }
