@@ -22,7 +22,7 @@ Contents: 1 The picture · 2 The two cores · 3 Every crossing between tasks · 
   │  logs/telemetry_*.csv        │     out (250 ms)      │ 4.1    │  │ prio 5    │  (see section 3)  └──────▲───────┘                       │
   │  logs/events_*.csv           │                       │        │  └───────────┘                          │ snapshot               │
   └──────────────────────────────────────────────────────┘        │                                  ┌──────┴───────┐  prio 8, every 100 ms │
-                                                                  │                                  │   sensors    │◄── I2C: TMP117, INA238│
+                                                                  │                                  │   sensors    │◄── I2C: TMP116, INA238│
                                                                   │                                  └──────────────┘                       │
                                                                   │                                  aux (prio 2): OLED, fan-link peer      │
                                                                   └───────────────────────────────────────────────────────────────────────┘
@@ -69,7 +69,7 @@ Why this split: Wi-Fi/lwIP work is bursty and can stall for tens of milliseconds
 ### The cycle on core 1 (`sensors`, every 100 ms)
 
 ```
- poll plate TMP117, (inlet TMP117 if built in), INA238  →  count consecutive failures per device
+ poll plate TMP116, (inlet TMP116 if built in), INA238  →  count consecutive failures per device
  after any failure: read SDA/SCL, if stuck low or the whole bus is dead → reset the I2C controller (rate limited)
  a device that answers again after failing is re-configured (it may have been power-cycled)
  publish the sensor snapshot (spinlock)  →  build one telemetry record from snapshot + app_status
@@ -113,7 +113,7 @@ The telemetry path has the strongest guarantee: the producer never waits, so net
 ## 4. Flow A — sensing to actuating (the control path)
 
 ```
- TMP117 (plate) ─┐                                                      ┌─► heater PWM  (GPIO23, 40 kHz, filtered analog demand)
+ TMP116 (plate) ─┐                                                      ┌─► heater PWM  (GPIO23, 1 kHz PWM demand)
  INA238 (48 V) ──┼─ sensors task ──snapshot──► supervisor ──► brain ──► ├─► heater enable (GPIO27, mirrored to the LED)
  (inlet, VRM) ───┘   count failures        │                  │        └─► fan 1 / fan 2 PWM (25 kHz, GPIO18 / GPIO25)
                                             │                  │

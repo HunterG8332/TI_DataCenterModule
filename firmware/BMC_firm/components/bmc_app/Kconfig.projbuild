@@ -11,15 +11,15 @@ menu "BMC application"
             Turn this OFF for the final demonstration build.
 
     config BMC_INLET_SENSOR
-        bool "A second TMP117 measures inlet (ambient) air"
+        bool "A second TMP116 measures inlet (ambient) air"
         default n
         help
             Adds the inlet temperature to telemetry and the self-test and uses
             it for the "start from ambient" check before a profile run.
 
     config BMC_INLET_I2C_ADDR
-        hex "I2C address of the inlet TMP117"
+        hex "I2C address of the inlet TMP116"
         depends on BMC_INLET_SENSOR
-        default 0x49
+        default 0x48
 
 endmenu

@@ -150,7 +150,7 @@ static void supervisor_task(void *arg)
                 full[i] = false;
             }
             bmc_stall_update(&s_stall[i], now_ms, interlock, duty[i], rpm[i], full[i]);
-            in.safety.fan_stalled[i] = s_stall[i].stalled;
+            in.safety.fan_stalled[i] = BMC_DEMO_FANS_UNPOWERED ? false : s_stall[i].stalled;
             in.fan[i].rpm = rpm[i];
             in.fan[i].window_full = full[i];
             in.fan_duty_applied[i] = duty[i];

@@ -146,15 +146,19 @@ void brain_step(brain_t *b, const brain_in_t *in, brain_out_t *out)
     /* ---- heater proposal ---- */
     float heater_cmd = 0.0f;
     uint32_t run_ms = 0;
+    float fan_demand = b->fan_demand;
     if (b->profile.running) {
         float p = 0.0f;
         if (bmc_profile_step(&b->profile, now, &p, &run_ms)) {
             heater_cmd = p;
+            if (bmc_profile_fan_pct(&b->profile) >= 0.0f) {
+                fan_demand = bmc_profile_fan_pct(&b->profile);    /* fan sweep step */
+            }
         } else {
             end_run(b, now, "complete");
         }
     }
-    if (!b->profile.running && so.mode == BMC_MODE_CHAR && b->manual_heater_on &&
+    if (!b->profile.running && so.actuating && b->manual_heater_on &&
         (uint32_t)(now - b->manual_heater_ms) <= BMC_HEATER_REQ_TIMEOUT_MS) {
         heater_cmd = b->manual_heater_pct;
     }
@@ -168,7 +172,7 @@ void brain_step(brain_t *b, const brain_in_t *in, brain_out_t *out)
     out->heater_pct = applied;
     out->heater_enable = allow && applied > 0.0f;
     out->fan_full = so.force_safe;
-    out->fan_demand_pct = so.force_safe ? 100.0f : b->fan_demand;
+    out->fan_demand_pct = so.force_safe ? 100.0f : fan_demand;
 
     /* ---- status ---- */
     brain_status_t *st = &out->st;
@@ -315,7 +319,9 @@ int brain_command(brain_t *b, const bmc_cmd_t *c, uint32_t now_ms, char *r, size
         }
         if (c->mode != mode) {
             end_run(b, now_ms, "mode_change");
-            b->manual_heater_on = false;
+            if (!bmc_mode_is_actuating(b->safety.mode)) {
+                b->manual_heater_on = false;         /* kept across CHAR/REACTIVE/PROACTIVE switches */
+            }
             b->manual_fan_auto = true;
             reset_control(b);
         }
@@ -334,8 +340,11 @@ int brain_command(brain_t *b, const bmc_cmd_t *c, uint32_t now_ms, char *r, size
             b->manual_heater_on = false;
             return 0;
         }
-        if (mode != BMC_MODE_CHAR) {
+        if (!bmc_mode_is_actuating(mode)) {          /* any actuating mode (self-test already passed) */
             return reply_err(r, n, c, "mode");
+        }
+        if (b->profile.running) {
+            return reply_err(r, n, c, "profile_running");
         }
         b->manual_heater_on = true;
         b->manual_heater_pct = clampf(c->f[0], 0.0f, 100.0f);

@@ -27,14 +27,16 @@ COLUMNS = ("bmc_id,seq,t_us,run_ms,mode,plate_c,inlet_c,v48_v,i48_a,power_w,v33_
            "flags,drops")
 SUBSCRIBER_TIMEOUT_S = 10.0
 HEATER_TIMEOUT_S = 1.0
-OT_TRIP, OT_WARN, SAFE_CLEAR, SAFE_HOLD_S = 120.0, 110.0, 60.0, 5.0
+OT_TRIP, OT_WARN, SAFE_CLEAR, SAFE_HOLD_S = 100.0, 90.0, 60.0, 5.0
 RPM_REF, FAN_MAX = 7000.0, (7000.0, 10000.0)
 FAULTS = ["NONE", "OVER_TEMP", "TEMP_LOSS", "TELEM_LOSS", "I2C_FAULT", "FAN_STALL", "SENSOR_STALE"]
 INJECT = {"OT": 1, "OVER_TEMP": 1, "TEMP_LOSS": 2, "TELEM": 3, "I2C": 4, "STALL": 5, "STALE": 6}
 F_REQ, F_PERMIT, F_ACTIVE, F_STALL, F_OT, F_TEMPBAD, F_FANOFF, F_TRIP = 1, 2, 4, 8, 16, 32, 64, 128
 F_SELFTEST, F_SAFE, F_PROFILE, F_WARN, F_HOOKS, F_LOWERED = 256, 512, 1024, 2048, 4096, 8192
 PRESETS = {1: [(60, 0), (600, 100), (300, 0)], 2: [(10, 0), (30, 50), (20, 0)],
-           3: [(180, p) for p in (0, 25, 50, 75, 100, 0)]}
+           3: [(180, p) for p in (0, 25, 50, 75, 100, 0)],
+           4: [(15, 0)] * 11}
+FAN_SWEEP = [10.0 * i for i in range(11)]      # preset 4: per-step fan demand override
 
 
 class Sim:
@@ -58,6 +60,7 @@ class Sim:
         self.manual_on, self.manual_pct, self.manual_t = False, 0.0, 0.0
         self.fan_auto, self.fan_manual = True, 0.0
         self.steps, self.running, self.run_t0, self.cur = [], False, 0.0, 0
+        self.fan_sweep = False
         self.heater_cmd = self.heater = 0.0
         self.events, self.next_id, self.pending = [], 1, []
         self.warned = False
@@ -104,15 +107,17 @@ class Sim:
             t = self.now - self.run_t0
             acc = 0.0
             cmd = None
-            for dur, pct in self.steps:
+            for k, (dur, pct) in enumerate(self.steps):
                 if t < acc + dur:
                     cmd = pct
+                    if self.fan_sweep and k < len(FAN_SWEEP):
+                        self.demand = FAN_SWEEP[k]
                     break
                 acc += dur
             if cmd is None:
                 self.running, cmd = False, 0.0
                 self.emit("RUN_END", "complete", f"mode={self.mode}")
-        elif self.mode == "CHAR" and self.manual_on and self.now - self.manual_t <= HEATER_TIMEOUT_S:
+        elif self.mode in ("CHAR", "REACTIVE", "PROACTIVE") and self.manual_on and self.now - self.manual_t <= HEATER_TIMEOUT_S:
             cmd = self.manual_pct
         self.heater_cmd = cmd
         allow = self.mode in ("CHAR", "REACTIVE", "PROACTIVE") and self.permit
@@ -226,7 +231,9 @@ class Sim:
                     return err("heater_on")
             if tgt != self.mode:
                 self.running = False
-                self.manual_on, self.fan_auto, self.integ = False, True, 0.0
+                self.fan_auto, self.integ = True, 0.0
+                if tgt == "STANDBY":
+                    self.manual_on = False        # kept across CHAR/REACTIVE/PROACTIVE switches
                 self.emit("MODE_CHANGE", tgt, f"from={self.mode} why=request")
                 self.mode = tgt
             return ok(self.mode)
@@ -249,8 +256,10 @@ class Sim:
             if not on:
                 self.manual_on = False
                 return ""
-            if self.mode != "CHAR":
+            if self.mode not in ("CHAR", "REACTIVE", "PROACTIVE"):
                 return err("mode")
+            if self.running:
+                return err("profile_running")
             self.manual_on, self.manual_pct, self.manual_t = True, pct, self.now
             return ""
         if verb == "FAN" and len(args) == 1:
@@ -303,6 +312,7 @@ class Sim:
                 return err("latched" if self.mode == "FAILSAFE" else "busy")
             if sub == "CLEAR":
                 self.steps = []
+                self.fan_sweep = False
                 return ok("CLEAR")
             if sub == "ADD" and len(args) == 3:
                 try:
@@ -315,6 +325,7 @@ class Sim:
                 return ok(f"ADD steps={len(self.steps)}")
             if sub == "PRESET" and len(args) == 2 and args[1].isdigit() and int(args[1]) in PRESETS:
                 self.steps = list(PRESETS[int(args[1])])
+                self.fan_sweep = int(args[1]) == 4
                 return ok(f"PRESET {args[1]} steps={len(self.steps)} total_s={sum(d for d, _ in self.steps)}")
             if sub == "START":
                 if not actuating:

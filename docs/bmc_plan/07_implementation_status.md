@@ -6,7 +6,7 @@ Written after the first implementation pass. It records what now exists, where i
 
 | Phase in `05` | Status | Where |
 |---|---|---|
-| P0 config header, TMP117/INA238 check | Done | `components/bmc_core/include/bmc_config.h`; TMP117 was already in fast continuous mode (≈15.5 ms, no averaging), so the lag risk in `00` item "verify" did not exist |
+| P0 config header, TMP116/INA238 check | Done | `components/bmc_core/include/bmc_config.h`; TMP116 was already in fast continuous mode (≈15.5 ms, no averaging), so the lag risk in `00` item "verify" did not exist |
 | P1 task split, snapshots, single-writer actuators | Done (jitter/stack-watermark logging **not** done) | `components/bmc_app/` (`sensors.c`, `supervisor.c`, `actuators.c`, `bmc_aux.c`; not named `aux.c`, which Windows reserves as a device name and Git cannot add) |
 | P2 mode state machine + failsafe core | Done | `bmc_core/bmc_safety.c`, `bmc_brain.c` |
 | P3 I2C robustness | Done | per-device failure counters, stuck-line detection, bus recovery, re-init after unplug (`sensors.c`, `bmc_i2c.c`, drivers) |
@@ -67,15 +67,15 @@ Setup: flash with `idf.py -p COMx flash monitor`; join the `BMC-Telemetry` Wi-Fi
 | T1 | Boot | Power up | Serial: `BMC up: STANDBY`; LED off; dashboard banner STANDBY; both fan RPM columns present |
 | T2 | Reset safety | Pull power while LED is on (use T5 first), restore | Boots into STANDBY, LED off, no heating |
 | T3 | Self-test, healthy | Click *Run self-test* | ≈7 s; fan 1 then fan 2 spin; event `SELFTEST PASS`; modes become available |
-| T4 | Self-test failures | One at a time: unplug plate TMP117; unplug INA238; unplug fan 2 (or its tach); swap the two tach wires; open the fan-enable interlock | Each gives `SELFTEST FAIL` naming the source (`tmp117_plate:no_response`, `ina238:no_response`, `fan2:no_tach…`, `tach_swapped_with_fan2…`, `fan_interlock:open`); *Characterization* stays disabled. Re-plug and re-run: passes (proves re-init after unplug) |
+| T4 | Self-test failures | One at a time: unplug plate TMP116; unplug INA238; unplug fan 2 (or its tach); swap the two tach wires; open the fan-enable interlock | Each gives `SELFTEST FAIL` naming the source (`tmp116_plate:no_response`, `ina238:no_response`, `fan2:no_tach…`, `tach_swapped_with_fan2…`, `fan_interlock:open`); *Characterization* stays disabled. Re-plug and re-run: passes (proves re-init after unplug) |
 | T5 | Manual heater | Self-test, *Characterization*, manual heater switch on, 40 % | LED on. Open permit switch → LED off. Open fan interlock → LED off. Close the browser tab → LED off within about 1 s |
-| T6 | Over-temp trip | In Characterization with heater on: `TESTSET OT <ambient+4>` then warm the plate TMP117 with a finger | Failsafe: LED off, both fans 100 %, event `FAILSAFE_ENTER OVER_TEMP` with plate temperature and timestamp, banner red. Scope the enable pin: low within about 50 ms of the over-limit reading |
-| T7 | Sensor loss | In Characterization, unplug the plate TMP117 | Failsafe `TEMP_LOSS` within about 0.4 s |
+| T6 | Over-temp trip | In Characterization with heater on: `TESTSET OT <ambient+4>` then warm the plate TMP116 with a finger | Failsafe: LED off, both fans 100 %, event `FAILSAFE_ENTER OVER_TEMP` with plate temperature and timestamp, banner red. Scope the enable pin: low within about 50 ms of the over-limit reading |
+| T7 | Sensor loss | In Characterization, unplug the plate TMP116 | Failsafe `TEMP_LOSS` within about 0.4 s |
 | T8 | Telemetry source loss | Unplug the INA238 | Failsafe `TELEM_LOSS` |
 | T9 | I2C bus fault | Hold SDA to ground through ≥1 kΩ | Failsafe `I2C_FAULT` (the bus fault outranks the device losses it causes) |
 | T10 | Fan stall | In Characterization, *FAN 50* via the console command box, then stop a fan (unplug power or pin the rotor) | Failsafe `FAN_STALL` within about 0.7 s; record which fan, and whether disconnecting the tach vs the power looks different |
 | T11 | Latch | After any trip: try *Characterization*, *Acknowledge* | Refused (`latched` / `not_safe`); heater stays off; fans stay at 100 % |
-| T12 | Cooldown and ACK | Clear the forced faults; wait | `SAFE_TO_HANDLE` 5 s after the plate is below 60 °C; *Acknowledge* then returns to STANDBY with the self-test flag cleared; *Characterization* refused until a new self-test passes. (To see the hold with a cold bench, heat the TMP117 above 60 °C with hot air first.) |
+| T12 | Cooldown and ACK | Clear the forced faults; wait | `SAFE_TO_HANDLE` 5 s after the plate is below 60 °C; *Acknowledge* then returns to STANDBY with the self-test flag cleared; *Characterization* refused until a new self-test passes. (To see the hold with a cold bench, heat the TMP116 above 60 °C with hot air first.) |
 | T13 | Profile | *Characterization*, preset 2, *Load + start* | LED follows the 0 % / 50 % / 0 % timeline (10 s, 30 s, 20 s); `RUN_START` and `RUN_END complete` events; PROFILE STOP aborts instantly; a trip mid-run aborts it (`RUN_END failsafe`) |
 | T14 | Closed loop, fans only | *Reactive* with the heater profile at 0 (profile preset 2 with no permit is fine); warm the sensor with a finger | Fan demand rises with temperature; **fan 1 and fan 2 RPM columns stay equal** |
 | T15 | RPM matching | In Characterization: `FAN 20`, `FAN 40`, `FAN 60`, `FAN 80`, `FAN 100` | Both fans track the same RPM (target = demand × 7 000); note where fan 1 saturates |

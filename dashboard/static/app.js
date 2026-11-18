@@ -330,7 +330,7 @@ function updateHeaterState() {
       note = `Failsafe is latched (${FAULT_NAMES[last.fault_code] || '?'}). Acknowledge it above once the plate is cool.`;
     } else if (want) {
       state = 'blocked'; text = 'Waiting';
-      if (last.mode !== 'CHAR') note = 'The manual heater only works in Characterization mode (run the self-test, then choose the mode).';
+      if (last.mode === 'STANDBY' || last.mode === 'SELFTEST') note = 'The manual heater needs an active mode (run the self-test, then choose Characterization, Reactive or Proactive).';
       else if (!(f & F.PERMIT) && (f & F.FAN_OFF)) { state = 'fault'; text = 'Inhibited (jumper)'; note = 'Run jumper (GPIO15) is open: fans forced to 0 RPM and heater off. Replace the jumper to resume.'; }
       else if (!(f & F.PERMIT)) note = 'Hardware permit switch is open.';
       else if (f & F.FAN_OFF) note = 'Fan enable interlock is open.';

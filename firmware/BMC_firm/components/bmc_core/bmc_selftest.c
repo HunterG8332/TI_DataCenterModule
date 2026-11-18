@@ -36,15 +36,15 @@ static void instant_checks(bmc_selftest_t *t, const selftest_in_t *in)
 {
     /* 1 + 2: enumeration and ambient plausibility of the plate sensor */
     if (!in->plate_valid) {
-        fail(t, "tmp117_plate:no_response");
+        fail(t, "tmp116_plate:no_response");
     } else if (in->plate_c < BMC_SELFTEST_AMBIENT_MIN_C || in->plate_c > BMC_SELFTEST_AMBIENT_MAX_C) {
-        fail(t, "tmp117_plate:implausible_%.1fC", (double)in->plate_c);
+        fail(t, "tmp116_plate:implausible_%.1fC", (double)in->plate_c);
     }
     if (in->inlet_fitted) {
         if (!in->inlet_valid) {
-            fail(t, "tmp117_inlet:no_response");
+            fail(t, "tmp116_inlet:no_response");
         } else if (in->inlet_c < BMC_SELFTEST_AMBIENT_MIN_C || in->inlet_c > BMC_SELFTEST_AMBIENT_MAX_C) {
-            fail(t, "tmp117_inlet:implausible_%.1fC", (double)in->inlet_c);
+            fail(t, "tmp116_inlet:implausible_%.1fC", (double)in->inlet_c);
         }
     }
     /* 3: 48 V sense */
@@ -67,6 +67,10 @@ static void instant_checks(bmc_selftest_t *t, const selftest_in_t *in)
 
 static void check_fan(bmc_selftest_t *t, const selftest_in_t *in, int k)
 {
+    if (BMC_DEMO_FANS_UNPOWERED) {
+        (void)t; (void)in; (void)k;
+        return;
+    }
     int other = 1 - k;
     uint32_t rpm = in->fan[k].rpm;
     uint32_t cross = in->fan[other].rpm;

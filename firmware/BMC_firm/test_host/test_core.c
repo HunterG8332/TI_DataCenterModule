@@ -161,6 +161,19 @@ static void test_profile(void)
     CHECK(!bmc_profile_preset(&p, 1));
     bmc_profile_stop(&p);
     CHECK(!bmc_profile_preset(&p, 99));
+
+    bmc_profile_clear(&p);                                   /* preset 4: fan sweep overrides fan demand per step */
+    CHECK(bmc_profile_preset(&p, 4));
+    CHECK(p.n == 11 && bmc_profile_total_s(&p) == 11u * BMC_FAN_SWEEP_STEP_S);
+    CHECK(bmc_profile_fan_pct(&p) < 0.0f);                   /* not running: no override */
+    CHECK(bmc_profile_start(&p, 0));
+    CHECK(bmc_profile_step(&p, 0, &pct, &run) && pct == 0.0f && bmc_profile_fan_pct(&p) == 0.0f);
+    CHECK(bmc_profile_step(&p, 3u * BMC_FAN_SWEEP_STEP_S * 1000u, &pct, &run) && bmc_profile_fan_pct(&p) == 30.0f);
+    CHECK(bmc_profile_step(&p, 10u * BMC_FAN_SWEEP_STEP_S * 1000u, &pct, &run) && bmc_profile_fan_pct(&p) == 100.0f);
+    bmc_profile_stop(&p);
+    bmc_profile_clear(&p);
+    CHECK(bmc_profile_add(&p, 5, 20.0f) && bmc_profile_fan_pct(&p) < 0.0f);   /* plain steps never override */
+    CHECK(!bmc_profile_add_fan(&p, 5, 0.0f, 101.0f));
 }
 
 /* ---- feedforward ------------------------------------------------------------ */

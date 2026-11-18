@@ -26,7 +26,7 @@ typedef struct {
     uint32_t now_ms;
     uint32_t sample_seq;            /* changes when a fresh 10 Hz sensor sample is available */
     safety_in_t safety;             /* sensor health, plate temperature, stall flags, pins */
-    bool plate_present;             /* TMP117 on the plate answered at least once since boot */
+    bool plate_present;             /* TMP116 on the plate answered at least once since boot */
     bool inlet_fitted;
     bool inlet_valid;
     float inlet_c;

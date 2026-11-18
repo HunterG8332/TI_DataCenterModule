@@ -10,12 +10,12 @@
 #define BMC_SAMPLE_PERIOD_MS        100    /* sensor task and telemetry (10 Hz) */
 
 /* ---- thermal limits (spreader plate) ------------------------------------- */
-#define BMC_OT_TRIP_C               120.0f /* over-temperature cutoff; runtime override may only lower it */
-#define BMC_OT_WARN_C               110.0f /* flag only */
+#define BMC_OT_TRIP_C               100.0f /* over-temperature cutoff; runtime override may only lower it */
+#define BMC_OT_WARN_C                90.0f /* flag only */
 #define BMC_SAFE_CLEAR_C            60.0f  /* safe-to-handle: plate below this ... */
 #define BMC_SAFE_CLEAR_HOLD_MS      5000   /* ... for this long before ACK is accepted */
 #define BMC_TEMP_VALID_MIN_C        (-20.0f)
-#define BMC_TEMP_VALID_MAX_C        150.0f /* TMP117 range limit; above is a sensor fault, not a temperature */
+#define BMC_TEMP_VALID_MAX_C        150.0f /* TMP116 range limit; above is a sensor fault, not a temperature */
 
 /* ---- fault detection ----------------------------------------------------- */
 #define BMC_FAIL_READS_TRIP         3      /* consecutive failed reads of a required device */
@@ -24,6 +24,11 @@
 
 /* ---- fans ----------------------------------------------------------------- */
 #define BMC_FAN_COUNT               2
+/* DEMO: fans are not powered, so suppress every tach-derived fan flag (stall fault, self-test
+ * fan failures). Set to 0 for real hardware. Host tests build with 0. */
+#ifndef BMC_DEMO_FANS_UNPOWERED
+#define BMC_DEMO_FANS_UNPOWERED     1
+#endif
 #define BMC_FAN_TACH_WINDOW_MS      250    /* stall-detector window (120 RPM per tach count) */
 #define BMC_FAN_STALL_MIN_DUTY_PCT  10.0f  /* below this a fan may legitimately idle */
 #define BMC_FAN_STALL_RECOVER_CYCLES 5
@@ -32,8 +37,8 @@
 #define BMC_FAN1_MAX_RPM            7000.0f
 #define BMC_FAN2_MAX_RPM            10000.0f
 #define BMC_RPM_REF                 7000.0f /* demand 100% = this RPM on every fan (see docs 04 section 2) */
-#define BMC_FANRPM_KP               0.002f  /* PLACEHOLDER duty% per RPM of error */
-#define BMC_FANRPM_KI               0.010f  /* PLACEHOLDER duty% per RPM*s */
+#define BMC_FANRPM_KP               0.001f  /* PLACEHOLDER duty% per RPM of error */
+#define BMC_FANRPM_KI               0.002f  /* PLACEHOLDER duty% per RPM*s; fan 2 plant (~100 RPM/%, ~3 s lag) limit-cycled at 0.010 */
 #define BMC_FANRPM_I_LIMIT          25.0f   /* integral clamp, duty % */
 #define BMC_FAILSAFE_FAN_DUTY_PCT   100.0f  /* failsafe: both fans open-loop at this duty */
 /* Standby / manual-auto fallback: linear curve, 0% at LOW, 100% at HIGH */
@@ -70,6 +75,7 @@
 
 /* ---- profile / run -------------------------------------------------------- */
 #define BMC_PROFILE_MAX_STEPS       16
+#define BMC_FAN_SWEEP_STEP_S        15     /* profile preset 4: dwell per fan step (settle + measure) */
 #define BMC_START_MAX_ABOVE_AMBIENT_C 5.0f /* PROFILE START needs plate within this of inlet */
 #define BMC_START_MAX_PLATE_NO_INLET_C 40.0f /* ... or below this when no inlet sensor is fitted */
 

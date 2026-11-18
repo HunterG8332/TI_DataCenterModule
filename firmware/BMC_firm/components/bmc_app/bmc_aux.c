@@ -16,7 +16,7 @@
 static const char *TAG = "aux";
 
 #define SSD1306_I2C_ADDR    0x3C
-#define FAN_LINK_I2C_ADDR   0x44     /* peer receiving the commanded fan demand; remove once the sensors are real */
+#define FAN_LINK_I2C_ADDR   0x44     /* peer receiving the commanded fan demand + applied heater % as a 2-byte frame [fan, heater]; remove once the sensors are real */
 #define AUX_PERIOD_MS       100
 #define OLED_EVERY_N        10       /* 1 Hz */
 #define LINK_RESEND_MS      500
@@ -33,6 +33,7 @@ static void aux_task(void *arg)
     bool link_inited = (bmc_fan_link_init(bmc_i2c_bus(), FAN_LINK_I2C_ADDR, &link) == ESP_OK);
     bool link_ok = true;                 /* so the first failed send logs a warning */
     int last_sent = -1;
+    int last_heater = -1;
     int64_t last_sent_us = 0;
     bool oled_fault = false;
     unsigned iter = 0;
@@ -47,8 +48,11 @@ static void aux_task(void *arg)
         if (link_inited) {
             int demand = (int)((as.fan_enabled ? as.st.fan_demand_pct : 0.0f) + 0.5f);
             int64_t now = esp_timer_get_time();
-            if (demand != last_sent || now - last_sent_us >= LINK_RESEND_MS * 1000LL) {
-                esp_err_t err = bmc_fan_link_send(&link, (float)demand);
+            int heater = (int)(as.st.heater_pct + 0.5f);   /* applied: 0 when inhibited */
+            if (heater < 0) heater = 0;
+            if (heater > 100) heater = 100;
+            if (demand != last_sent || heater != last_heater || now - last_sent_us >= LINK_RESEND_MS * 1000LL) {
+                esp_err_t err = bmc_fan_link_send_frame(&link, (float)demand, (float)heater);
                 if (err != ESP_OK && link_ok) {
                     ESP_LOGW(TAG, "fan link 0x%02x send failed: %s", FAN_LINK_I2C_ADDR, esp_err_to_name(err));
                 } else if (err == ESP_OK && !link_ok) {
@@ -56,6 +60,7 @@ static void aux_task(void *arg)
                 }
                 link_ok = (err == ESP_OK);
                 last_sent = demand;
+                last_heater = heater;
                 last_sent_us = now;
             }
         }

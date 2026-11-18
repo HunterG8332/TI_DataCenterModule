@@ -26,8 +26,8 @@ The firmware today is a working sensing / fan / telemetry / heater-arbitration s
 
 | # | Decision | Chosen |
 |---|---|---|
-| D1 | Control variable for the reactive law | **Spreader plate** temperature (TMP117 mounted on the plate). The ICD says "heat sink" in places and must be corrected. |
-| D2 | Over-temp cutoff / clear threshold | **Cutoff 120 °C, clear (safe-to-handle) 60 °C** — separate values with wide hysteresis. |
+| D1 | Control variable for the reactive law | **Spreader plate** temperature (TMP116 mounted on the plate). The ICD says "heat sink" in places and must be corrected. |
+| D2 | Over-temp cutoff / clear threshold | **Cutoff 100 °C, clear (safe-to-handle) 60 °C** — separate values with wide hysteresis. |
 | D3 | Where safety logic runs | **Dedicated safety task**, highest priority, sole owner of the final actuator outputs. |
 | D4 | Development hardware | **ESP32-WROOM-32E dev kit now, port to ESP32-S3 later.** Board abstraction (`bmc_board`) keeps the port to one file. |
 | D5 | Command channel | **Extend the existing UDP text protocol** (MODE, SELFTEST, ACK, PROFILE …) with reply datagrams. |
@@ -70,7 +70,7 @@ These are inconsistencies found while reading the PDF. They should be resolved i
 
 ## Things to verify in the code before relying on them (not yet read)
 
-- ~~**TMP117 conversion configuration**~~ **Checked (2026-10-19):** `tmp117.c` already writes continuous mode, no averaging (≈15.5 ms per result). The 1 s lag risk does not exist. Keep it in the design record because the ICD names sensor response time as a fairness concern.
+- ~~**TMP116 conversion configuration**~~ **Checked (2026-10-19):** `tmp116.c` already writes continuous mode, no averaging (≈15.5 ms per result). The 1 s lag risk does not exist. Keep it in the design record because the ICD names sensor response time as a fairness concern.
 - **INA238 configuration** (`ina238.c`): 2 mΩ shunt, 5 A full scale, ADC_CONFIG default (continuous, 1052 µs, no averaging), now written explicitly. The ICD requires the reported current to be an average over ≥ 1 heater PWM period; fix averaging together with the heater PWM frequency.
 - **`bmc_net_ap.c`**: SoftAP only today; Ethernet is a later item.
 - ~~`simulate_bmc.py`, `static/app.js` need updating~~ **Done** (see `07_implementation_status.md`).

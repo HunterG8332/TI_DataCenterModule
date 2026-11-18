@@ -56,7 +56,7 @@ static void test_boot_and_standby(void)
     CHECK(o.mode == BMC_MODE_STANDBY);
     CHECK(!o.force_safe && !o.heater_allowed && !o.selftest_ok);
     CHECK(o.fault_code == BMC_FAULT_NONE);
-    CHECK_NEAR(o.ot_limit_c, 120.0, 0.001);
+    CHECK_NEAR(o.ot_limit_c, 100.0, 0.001);
 
     /* Non-thermal faults are observable but do not latch in STANDBY: there is no heat to remove,
      * and the self-test must be able to name them. */
@@ -71,9 +71,9 @@ static void test_boot_and_standby(void)
 static void test_over_temp_any_mode(void)
 {
     fresh();
-    safety_out_t o = step(healthy(119.9f));
+    safety_out_t o = step(healthy(99.9f));
     CHECK(o.mode == BMC_MODE_STANDBY);
-    o = step(healthy(120.0f));
+    o = step(healthy(100.0f));
     CHECK(o.mode == BMC_MODE_FAILSAFE);
     CHECK(o.force_safe && !o.heater_allowed);
     CHECK(o.fault_code == BMC_FAULT_OVER_TEMP);
@@ -88,7 +88,7 @@ static void test_over_temp_any_mode(void)
     CHECK(found >= 0);
     if (found >= 0) {
         CHECK_STR(all[found].code, "OVER_TEMP");
-        CHECK(strstr(all[found].detail, "plate_c=120.0") != NULL);
+        CHECK(strstr(all[found].detail, "plate_c=100.0") != NULL);
         CHECK(all[found].t_ms == now);                          /* timestamped at the moment of detection */
     }
 }
@@ -255,7 +255,7 @@ static void test_ot_limit_override(void)
 {
     fresh();
     safety_set_ot_limit(&s, 500.0f);
-    CHECK_NEAR(s.ot_limit_c, 120.0, 0.001);                  /* can never be raised above the hard limit */
+    CHECK_NEAR(s.ot_limit_c, 100.0, 0.001);                  /* can never be raised above the hard limit */
     safety_set_ot_limit(&s, 40.0f);
     CHECK(step(healthy(39.9f)).mode == BMC_MODE_STANDBY);
     safety_out_t o = step(healthy(40.0f));
@@ -263,7 +263,7 @@ static void test_ot_limit_override(void)
     now += 6000; step(healthy(30));
     now += 6000; step(healthy(30));
     CHECK(safety_ack(&s) == NULL);
-    CHECK_NEAR(s.ot_limit_c, 120.0, 0.001);                  /* a lowered test limit does not survive recovery */
+    CHECK_NEAR(s.ot_limit_c, 100.0, 0.001);                  /* a lowered test limit does not survive recovery */
 }
 
 static void test_injection(void)
@@ -280,8 +280,8 @@ static void test_injection(void)
 static void test_warn_event_once(void)
 {
     fresh();
-    step(healthy(111));
-    step(healthy(112));
+    step(healthy(91));
+    step(healthy(92));
     bmc_event_t all[BMC_EV_RING];
     int n = bmc_ev_recent(&ev, all, BMC_EV_RING);
     int warns = 0;

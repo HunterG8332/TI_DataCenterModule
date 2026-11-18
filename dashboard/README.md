@@ -126,7 +126,7 @@ about 0.1 s, 0 and 0.
 | `bmc_app` | Hardware glue: `sensors` (I2C + failure counting + telemetry), `supervisor` (50 ms safety/fan task), `actuators` (the only writer of heater and fan outputs), `aux` (OLED, fan-link peer). |
 | `bmc_stream` | Core-0 net task: telemetry, events (sent 3×), command intake, replies. The safety task never calls the network stack. |
 | `bmc_net` | The only file that knows the link (Wi-Fi SoftAP now, W5500 later). |
-| `tmp117`, `ina238`, `ssd1306`, `bmc_fan`, `bmc_heater_cmd`, `bmc_i2c`, `bmc_board` | Device drivers and the board pin map. |
+| `tmp116`, `ina238`, `ssd1306`, `bmc_fan`, `bmc_heater_cmd`, `bmc_i2c`, `bmc_board` | Device drivers and the board pin map. |
 
 Settings: `idf.py menuconfig` → *BMC network*, *BMC telemetry stream*, *BMC application* (test hooks, inlet sensor).
 **Password note:** `sdkconfig` is tracked in git, so the configured Wi-Fi password is committed with it. The default

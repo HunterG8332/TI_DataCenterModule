@@ -13,8 +13,8 @@ The header line (already sent first and every 200 records) defines the columns. 
 | `t_us` | µs | `esp_timer`, boot-relative, stamped at **sample time** | ICD §6.3 (stamp at sampling) |
 | `run_ms` | ms | since `PROFILE START` (or mode entry in manual runs); empty outside a run | ICD Table 6 "ms since run start" |
 | `mode` | enum string | state machine | ICD "active control mode" |
-| `plate_c` | °C | TMP117 on spreader plate | ICD "heater temperature" → **renamed**, D1 |
-| `inlet_c` | °C | inlet TMP117 (when fitted) | FSR 3.2.4.1 ambient per run |
+| `plate_c` | °C | TMP116 on spreader plate | ICD "heater temperature" → **renamed**, D1 |
+| `inlet_c` | °C | inlet TMP116 (when fitted) | FSR 3.2.4.1 ambient per run |
 | `v48_v` | V | INA238 bus voltage | ICD Table 6 |
 | `i48_a` | A | INA238 current (averaged) | ICD Table 6, feedforward input |
 | `power_w` | W | INA238 | existing |
@@ -58,7 +58,7 @@ Examples:
 ```
 EVENT,1042,18340221,,FAILSAFE_ENTER,OVER_TEMP,plate_c=120.3 limit=120.0 mode=REACTIVE
 EVENT,1043,18340221,,FAILSAFE_ENTER,FAN_STALL,fan=2 duty=62 rpm=0
-EVENT,2201,31120000,,SELFTEST,FAIL,tmp117_plate: no ack @0x48
+EVENT,2201,31120000,,SELFTEST,FAIL,tmp116_plate: no ack @0x49
 EVENT,5001,90000000,0,RUN_START,REACTIVE,profile=1 setpoint=70 kp=.. ki=.. kd=.. ff_variant=0 rpm_ref=7000 ot_limit=120
 ```
 
@@ -86,7 +86,7 @@ Format: `<CMD> [args]\n`. The BMC replies to the sender with one datagram: `OK <
 | `GAINS <kp> <ki> <kd>` | STANDBY, or REACTIVE with no run active | Reactive PID gains (see `04`); rejected during a run |
 | `FF <variant>` | STANDBY, or PROACTIVE with no run active | Select feedforward variant |
 | `PROFILE CLEAR` / `PROFILE ADD <seconds> <heater_pct>` | STANDBY | Build a profile (max 16 steps) |
-| `PROFILE PRESET <n>` | STANDBY | Load built-in profile. Preset 1 = CONOPS Scenario 4.1 (60 s idle, 600 s full, 300 s idle) |
+| `PROFILE PRESET <n>` | STANDBY | Load built-in profile. Preset 1 = CONOPS Scenario 4.1 (60 s idle, 600 s full, 300 s idle); preset 4 = fan sweep (heater off, fan demand 0–100 % in 10 % steps, 15 s each; the profile's fan demand overrides the mode's fan law) |
 | `PROFILE START` | an actuating mode, `selftest_ok` | Zero `run_ms`, emit `RUN_START`, begin timeline |
 | `PROFILE STOP` | any | Abort profile, heater to 0, fans per mode (`STOP` is always accepted) |
 | `TESTSET OT_LIMIT <c>`, `TESTINJECT <fault>` | test-hook builds only | See `02` §7 |
@@ -118,9 +118,9 @@ Avoid GPIO 0, 2, 5, 12, 15 (boot strapping) for anything that can be driven at r
 
 | Device | Address | Poll | Required for heat? |
 |---|---|---|---|
-| TMP117 (spreader plate) | 0x48 | 10 Hz | **yes** |
+| TMP116 (spreader plate) | 0x49 (ADD0→V+) | 10 Hz | **yes** |
 | INA238 (48 V sense) | 0x40 | 10 Hz | yes (feedforward and power) |
-| TMP117 (inlet, planned) | 0x49 (ADD0→V+) | 10 Hz | yes for run logging (FSR 3.2.4.1) |
+| TMP116 (inlet, planned) | 0x48 (ADD0→GND) | 10 Hz | yes for run logging (FSR 3.2.4.1) |
 | VRM rail monitor | TBD (Chiemeka's design) | 10 Hz | yes once it exists |
 | SSD1306 OLED | 0x3C | 1 Hz | no |
 | fan-link peer (emulation) | 0x44 | on change | no; remove when emulation ends |

@@ -38,7 +38,7 @@ Run each injection from a healthy state in an actuating mode (heater at a low, s
 | # | Fault | Physical injection | Software injection (test hooks) | Expected | Check |
 |---|---|---|---|---|---|
 | I1 | Over-temperature | warm plate with heater, with limit lowered | `TESTSET OT_LIMIT <c>` just above the current temperature | `OVER_TEMP`, heater off, fans 100 % ≤ 50 ms after sample | log, event |
-| I2 | Plate sensor loss | unplug plate TMP117 | `TESTINJECT temp_loss` | `TEMP_LOSS` in ≈ 350 ms | event time vs unplug time |
+| I2 | Plate sensor loss | unplug plate TMP116 | `TESTINJECT temp_loss` | `TEMP_LOSS` in ≈ 350 ms | event time vs unplug time |
 | I3 | Other telemetry loss | unplug INA238 | `TESTINJECT telem` | `TELEM_LOSS` + device id | event |
 | I4 | I2C bus fault | hold SDA to ground through a series resistor (≥ 1 kΩ, 3.3 V logic) | `TESTINJECT i2c` | `I2C_FAULT` | event |
 | I5 | Fan stall | disconnect fan (power or tach, record which) | `TESTINJECT stall1` / `stall2` | `FAN_STALL` + fan index | event |

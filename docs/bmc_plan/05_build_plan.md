@@ -39,11 +39,11 @@ Suggested **ECEN 403 cut line:** P0–P6 plus the P7 bench steps that the hardwa
 Tasks
 - Tag the current commit `bmc-baseline`.
 - Create `components/bmc_config/include/bmc_config.h`; move every constant now in `main.c` (periods, fan curve, stall, heater timeout) and add the new ones from `02` §1. Replace `HEATER_MAX_TEMP_C = FAN_CURVE_HIGH_C` with `OT_TRIP_C` (120) and `OT_WARN_C`.
-- Read `tmp117.c` and `ina238.c`; write down their actual conversion/averaging configuration (see README). Decide the TMP117 mode deliberately (continuous, minimal averaging, or one-shot per cycle) and note the effective update rate.
+- Read `tmp116.c` and `ina238.c`; write down their actual conversion/averaging configuration (see README). Decide the TMP116 mode deliberately (continuous, minimal averaging, or one-shot per cycle) and note the effective update rate.
 - Fix the stale GPIO comment in `bmc_board.c`.
 - Send the document-discrepancy list (`00_README.md`) to the teammates.
 
-Exit: builds, behavior unchanged, constants centralized, TMP117 effective rate known and recorded.
+Exit: builds, behavior unchanged, constants centralized, TMP116 effective rate known and recorded.
 Rollback: revert the merge; nothing else depends on it yet.
 
 ## P1 — Split tasks, snapshots, single-writer actuators
@@ -69,7 +69,7 @@ Tasks
 
 Exit (all recorded in the bench log):
 1. Boot lands in STANDBY, heater off, from power-up, from WDT reset and from brown-out (pull the USB power).
-2. Force each of F1, F2, F5 with the hooks and with the physical method: warm the TMP117 with a lowered limit, unplug the TMP117, unplug a fan; the LED turns off and the fan goes to 100 % within the stated latency each time.
+2. Force each of F1, F2, F5 with the hooks and with the physical method: warm the TMP116 with a lowered limit, unplug the TMP116, unplug a fan; the LED turns off and the fan goes to 100 % within the stated latency each time.
 3. While latched, `MODE CHAR` and `HEATER` are refused; `ACK` is refused while the plate is above 60 °C or the fault persists; `ACK` works when safe, and the state returns to STANDBY with `selftest_ok = false`.
 4. Event record has cause + timestamp and appears in the dashboard log.
 
@@ -82,7 +82,7 @@ Tasks
 - Bus recovery sequence (9-clock toggle, then re-init) used in STANDBY; in an actuating mode a stuck bus is simply `I2C_FAULT` failsafe.
 - Wire F3 and F4 into the fault table; classify bus-root-cause vs single-device.
 
-Exit: injected faults — unplug INA238 mid-run (F3), unplug TMP117 (F2), pull SDA low with a jumper through a resistor (F4) — each produces failsafe with the right cause and device in the event; reconnecting does not clear the latch.
+Exit: injected faults — unplug INA238 mid-run (F3), unplug TMP116 (F2), pull SDA low with a jumper through a resistor (F4) — each produces failsafe with the right cause and device in the event; reconnecting does not clear the latch.
 
 ## P4 — Command channel, telemetry v2, dashboard
 
@@ -155,7 +155,7 @@ Exit: validation matrix (`06`) fully populated with evidence; documentation set 
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| TMP117 default 1 s conversion makes the reactive baseline artificially slow | High until checked | High (invalidates experiment fairness) | Check in P0; set mode explicitly; document |
+| TMP116 default 1 s conversion makes the reactive baseline artificially slow | High until checked | High (invalidates experiment fairness) | Check in P0; set mode explicitly; document |
 | Hardware late (gate driver, heater, sensors) | Medium | Schedule | P0–P6 are hardware-independent by design |
 | Fan RPM-matching inner loop interacts with stall detector | Medium | Nuisance trips | Characterize first (P6); keep stall detector on measured RPM and duty floor, not target |
 | Shared-state races after task split | Medium | Subtle bugs | Snapshot structs, sequence stamps, jitter and stack logging in P1 |

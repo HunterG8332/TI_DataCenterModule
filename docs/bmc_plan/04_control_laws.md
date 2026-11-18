@@ -64,7 +64,7 @@ fan_demand_pct = clamp( P + I + D + ff_offset, out_min, out_max ), then slew-lim
 
 Parameters (the same ones OpenBMC exposes): `Kp, Ki, Kd, integral limits, output limits, slew rates, sample period`. The feedforward offset/gain of OpenBMC is **not used** in the reactive law: the CONOPS defines reactive as "regulator current is logged but not used for control".
 
-Defaults: `Ts = 100 ms` (one new plate sample per tick; if the TMP117 only updates at 1 Hz — see README "things to verify" — this must be fixed first, otherwise the baseline is artificially slow).
+Defaults: `Ts = 100 ms` (one new plate sample per tick; if the TMP116 only updates at 1 Hz — see README "things to verify" — this must be fixed first, otherwise the baseline is artificially slow).
 
 Setpoint: a single value (`SETPOINT`), locked during a run, the same for both laws.
 

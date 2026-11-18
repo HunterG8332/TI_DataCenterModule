@@ -19,7 +19,7 @@ components/
   bmc_board/              pins + board-specific constants (port point for S3)
   bmc_config/       NEW   bmc_config.h: all thresholds/periods (single source of truth)
   bmc_i2c/                bus init  → add bmc_i2c_xfer() wrapper w/ failure counting + recovery
-  tmp117/ ina238/ ssd1306/  device drivers (unchanged API)
+  tmp116/ ina238/ ssd1306/  device drivers (unchanged API)
   bmc_sensors/      NEW   sensor_task: polls devices, stamps age/validity, consecutive-fail counters
   bmc_fan/                one-fan PWM+tach driver (instantiate twice)
   bmc_fanctl/       NEW   RPM-matching layer: demand% → target RPM → per-fan duty (04)
@@ -42,7 +42,7 @@ Core 1 is the control core; core 0 is network (existing convention).
 | Task | Core | Priority | Period | Does |
 |---|---|---|---|---|
 | `safety` | 1 | **10** (highest app) | 50 ms | Reads snapshots, evaluates fault table, runs mode state machine, drives `bmc_actuators`, handles commands from queue, feeds task watchdog |
-| `sensors` (today `tmp117`) | 1 | 8 | 100 ms (`vTaskDelayUntil`) | TMP117 / INA238 (/ future VRM, inlet) reads, validity + age + fail counters, publishes snapshot, calls `telemetry_publish` |
+| `sensors` (today `tmp116`) | 1 | 8 | 100 ms (`vTaskDelayUntil`) | TMP116 / INA238 (/ future VRM, inlet) reads, validity + age + fail counters, publishes snapshot, calls `telemetry_publish` |
 | `control` | 1 | 6 | 100 ms (on new sample) | Runs active control law, profile runner; outputs *proposals* (fan demand %, heater %) to `bmc_actuators` |
 | `fanctl` | 1 | 5 | 50 ms | Inner RPM loops (per fan), tach reads, stall detection inputs |
 | `net_tx` / cmd rx | 0 | 5 | 50 ms service | Existing stream task; also receives commands, forwards to `bmc_cmd` queue |
@@ -57,7 +57,7 @@ Notes:
 ## Data flow
 
 ```
- TMP117 plate ─┐
+ TMP116 plate ─┐
  INA238 48V   ─┼─> sensors ──snapshot──> safety ──final outputs──> bmc_actuators ──> heater PWM/enable
  (inlet, VRM)  ┘      │                    ▲   │                                └──> fan PWM x2
  tach x2 ─> fanctl ───┘ (RPM, stall flags) │   └─ events/state ─> telemetry ─> UDP ─> host
@@ -101,7 +101,7 @@ Today `heater_arbiter()` decides in the fan task and the "heater" is an analog-d
 
 | Item | Budget |
 |---|---|
-| Sensor cycle | 100 ms period, jitter logged. TMP117 read ≈ 1 ms at 400 kHz; INA238 ≈ 1 ms; budget ≤ 10 ms for all devices |
+| Sensor cycle | 100 ms period, jitter logged. TMP116 read ≈ 1 ms at 400 kHz; INA238 ≈ 1 ms; budget ≤ 10 ms for all devices |
 | Safety evaluation | ≤ 1 ms per 50 ms iteration |
 | Worst-case fault-to-safe latency | 3 failed reads × 100 ms + ≤ 50 ms = **≈ 350 ms** for telemetry-type faults; ≤ 50 ms after an over-temp reading; ≤ 50 ms + tach window (250–500 ms) for stall |
 | Telemetry | one record / 100 ms; any record that cannot be sent increments `drops` |

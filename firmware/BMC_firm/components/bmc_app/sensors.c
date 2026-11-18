@@ -10,11 +10,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "ina238.h"
-#include "tmp117.h"
+#include "tmp116.h"
 
 static const char *TAG = "sensors";
 
-#define TMP117_PLATE_ADDR   0x48     /* ADD0 -> GND; on the spreader plate */
+#define TMP116_PLATE_ADDR   0x49     /* ADD0 -> V+ (VDD); on the spreader plate */
 #define INA238_ADDR         0x40     /* A1, A0 -> GND */
 #define SENSOR_TASK_PRIORITY 8
 #define SENSOR_TASK_CORE     1
@@ -22,7 +22,7 @@ static const char *TAG = "sensors";
 #define FAILS_SATURATE       250
 
 typedef struct {
-    tmp117_t dev;
+    tmp116_t dev;
     sensor_dev_t st;
     bool tried;
     uint32_t last_try_ms;
@@ -61,10 +61,10 @@ static void tmp_poll(tmp_ch_t *c, uint8_t addr, uint32_t now_ms, const char *nam
         if (!c->tried || now_ms - c->last_try_ms >= BMC_SENSOR_REINIT_MS) {
             c->tried = true;
             c->last_try_ms = now_ms;
-            if (tmp117_init(bmc_i2c_bus(), addr, &c->dev) == ESP_OK) {
+            if (tmp116_init(bmc_i2c_bus(), addr, &c->dev) == ESP_OK) {
                 c->st.present = true;
                 c->st.fails = 0;
-                ESP_LOGI(TAG, "%s tmp117 found at 0x%02x", name, addr);
+                ESP_LOGI(TAG, "%s tmp116 found at 0x%02x", name, addr);
             }
         }
         if (!c->st.present) {
@@ -74,17 +74,17 @@ static void tmp_poll(tmp_ch_t *c, uint8_t addr, uint32_t now_ms, const char *nam
         }
     }
     float t;
-    if (tmp117_read_c(&c->dev, &t) == ESP_OK) {
+    if (tmp116_read_c(&c->dev, &t) == ESP_OK) {
         if (c->st.fails > 0) {
-            tmp117_configure(&c->dev);      /* it may have been power-cycled: restore fast conversions */
-            ESP_LOGI(TAG, "%s tmp117 reads again", name);
+            tmp116_configure(&c->dev);      /* it may have been power-cycled: restore fast conversions */
+            ESP_LOGI(TAG, "%s tmp116 reads again", name);
         }
         c->st.fails = 0;
         c->st.valid = true;
         c->value = t;
     } else {
         if (c->st.fails == 0) {
-            ESP_LOGW(TAG, "%s tmp117 read failed", name);
+            ESP_LOGW(TAG, "%s tmp116 read failed", name);
         }
         note_fail(&c->st);
     }
@@ -136,7 +136,7 @@ static void sensor_task(void *arg)
         esp_task_wdt_reset();
         uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
 
-        tmp_poll(&plate, TMP117_PLATE_ADDR, now_ms, "plate");
+        tmp_poll(&plate, TMP116_PLATE_ADDR, now_ms, "plate");
 #if CONFIG_BMC_INLET_SENSOR
         tmp_poll(&inlet, CONFIG_BMC_INLET_I2C_ADDR, now_ms, "inlet");
 #endif

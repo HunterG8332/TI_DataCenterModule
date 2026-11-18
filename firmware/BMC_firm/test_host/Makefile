@@ -3,7 +3,7 @@
 #     make -C firmware/BMC_firm/test_host test
 CORE    := ../components/bmc_core
 CC      ?= gcc
-CFLAGS  := -std=c11 -D_GNU_SOURCE -g -O1 -Wall -Wextra -Wshadow -Werror \
+CFLAGS  := -std=c11 -D_GNU_SOURCE -DBMC_DEMO_FANS_UNPOWERED=0 -g -O1 -Wall -Wextra -Wshadow -Werror \
            -fsanitize=address,undefined -fno-sanitize-recover=undefined -I$(CORE)/include -I.
 SRCS    := $(wildcard $(CORE)/*.c)
 TESTS   := $(wildcard test_*.c)

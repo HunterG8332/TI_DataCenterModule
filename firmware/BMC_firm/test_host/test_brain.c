@@ -209,9 +209,9 @@ static void s_swapped(world_t *w) { w->tach_swapped = true; }
 
 static void test_selftest_failures(void)
 {
-    selftest_fails("plate sensor missing", s_plate_missing, "tmp117_plate:no_response");
+    selftest_fails("plate sensor missing", s_plate_missing, "tmp116_plate:no_response");
     selftest_fails("ina238 missing", s_ina_missing, "ina238:no_response");
-    selftest_fails("plate implausible", s_plate_hot, "tmp117_plate:implausible");
+    selftest_fails("plate implausible", s_plate_hot, "tmp116_plate:implausible");
     selftest_fails("fan interlock open", s_interlock_open, "fan_interlock:open");
     selftest_fails("fan 1 disconnected", s_fan1_dead, "fan1:no_tach");
     selftest_fails("fan 2 disconnected", s_fan2_dead, "fan2:no_tach");

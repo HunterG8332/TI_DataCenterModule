@@ -1,10 +1,9 @@
 #include "bmc_heater_cmd.h"
 
-#define HEATER_CMD_PWM_FREQ_HZ 40000
+#define HEATER_CMD_PWM_FREQ_HZ 1000
 #define HEATER_CMD_LEDC_MODE   LEDC_LOW_SPEED_MODE
-/* 80e6/40e3 = 2000, so 10 bits (1024) is the largest resolution that fits:
- * ~3.2 mV steps after the filter, well inside the ~1% requirement. The high
- * carrier keeps ripple through the RC filter around a millivolt. */
+/* 80e6/1e3 = 80000, so up to 16 bits would fit; 10 bits (1024 steps, ~0.1%)
+ * is kept, well inside the ~1% requirement. */
 #define HEATER_CMD_LEDC_RES    LEDC_TIMER_10_BIT
 #define HEATER_CMD_DUTY_MAX    ((1u << 10) - 1)
 

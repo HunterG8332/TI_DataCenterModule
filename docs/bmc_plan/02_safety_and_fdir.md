@@ -6,11 +6,11 @@ Governing requirements: FSR 3.2.4.3, 3.2.5, 3.2.5.1.1–3.2.5.1.5; ICD §4 and �
 
 | Constant | Value | Notes |
 |---|---|---|
-| `OT_TRIP_C` | **120.0 °C** | Spreader plate. Hard maximum; runtime override may only *lower* it (see §7) |
-| `OT_WARN_C` | 110.0 °C | Flag only (no action) — gives the operator and the log a lead |
+| `OT_TRIP_C` | **100.0 °C** | Spreader plate. Hard maximum; runtime override may only *lower* it (see §7) |
+| `OT_WARN_C` | 90.0 °C | Flag only (no action) — gives the operator and the log a lead |
 | `SAFE_CLEAR_C` | **60.0 °C** | Safe-to-handle threshold (D2). Needs to be confirmed against the actual plate material and guard design |
 | `SAFE_CLEAR_HOLD_S` | 5 s | Plate must stay below `SAFE_CLEAR_C` this long before "safe" is reported |
-| `TEMP_VALID_MIN_C / MAX_C` | −20 / 150 °C | Reading outside this is treated as a sensor fault, not a temperature (TMP117 range is −55…150) |
+| `TEMP_VALID_MIN_C / MAX_C` | −20 / 150 °C | Reading outside this is treated as a sensor fault, not a temperature (TMP116 range is −55…150) |
 | `FAIL_READS_TRIP` | 3 | Consecutive failed reads per required device (D7) |
 | `SENSOR_STALE_MS` | 500 | No new sensor snapshot for this long → sensor task presumed hung |
 | `FAN_STALL_MIN_DUTY_PCT` | 10 % | Existing; below this a fan may legitimately idle |
@@ -28,7 +28,7 @@ Every row below results in `FAILSAFE` unless noted. "Detect" is what the safety 
 | ID | Condition | Detect | Latency (worst) | Cause code | Notes |
 |---|---|---|---|---|---|
 | F1 | Over-temperature | plate `valid` and `temp ≥ OT_TRIP_C` (single sample) | ≤ 50 ms after the sample | `OVER_TEMP` | Independent of mode and control law |
-| F2 | Plate sensor loss | plate TMP117 fails `FAIL_READS_TRIP` consecutive reads, **or** reading outside valid range | ≈ 350 ms | `TEMP_LOSS` | "Operating blind" = same as over-temp (FSR rationale) |
+| F2 | Plate sensor loss | plate TMP116 fails `FAIL_READS_TRIP` consecutive reads, **or** reading outside valid range | ≈ 350 ms | `TEMP_LOSS` | "Operating blind" = same as over-temp (FSR rationale) |
 | F3 | Other telemetry source loss | INA238 (and future required devices: inlet sensor, VRM monitor) fail `FAIL_READS_TRIP` consecutive reads | ≈ 350 ms | `TELEM_LOSS` + device id | Only *required* sources trip; OLED is not required |
 | F4 | I2C bus fault | all devices failing together, **or** SDA/SCL stuck low (GPIO sample after a failed transfer), **or** driver timeout/bus-busy | ≈ 350 ms, or immediately if line stuck low | `I2C_FAULT` | Takes precedence over F2/F3 as the reported cause when the bus is the root cause |
 | F5 | Fan stall | existing detector: fan enabled, duty ≥ floor for ≥ 1 tach window, RPM = 0, **per fan** (D11) | window + ≤ 50 ms | `FAN_STALL` + fan index | |
@@ -76,7 +76,7 @@ Triggered by `SELFTEST` from `STANDBY` only. Heater is forced off throughout. �
 
 | # | Check | Pass criterion | Failure message names |
 |---|---|---|---|
-| 1 | I2C enumeration | every address in the expected list ACKs (`TMP117 plate`, `INA238`, later inlet TMP117 / VRM monitor) | the address and device |
+| 1 | I2C enumeration | every address in the expected list ACKs (`TMP116 plate`, `INA238`, later inlet TMP116 / VRM monitor) | the address and device |
 | 2 | Temperature plausibility | each temperature sensor reads between `SELFTEST_AMBIENT_MIN_C` and `_MAX_C` | sensor and the value read |
 | 3 | 48 V sense plausibility | INA238 reads a bus voltage within ±10 % of 48 V *when* `SELFTEST_REQUIRE_48V` is set (off for bench work without the supply), current near idle | value read |
 | 4 | Fan exercise, one at a time | drive fan *n* to a test duty for ~2 s: its RPM rises above a minimum, **and** the other fan's tach stays near 0 (catches swapped tach wires and checks "each fan reports independently") | fan index and reason |
@@ -85,7 +85,7 @@ Triggered by `SELFTEST` from `STANDBY` only. Heater is forced off throughout. �
 
 Any failure leaves `selftest_ok = false` and blocks entry to every actuating mode. Passing sets `selftest_ok = true`; it is cleared by any failsafe, any reboot, and an ACK.
 
-Why plausibility rather than "device responds": a connected-but-garbage TMP117 is the most dangerous case in the project (heat with no valid feedback), and this is what catches it.
+Why plausibility rather than "device responds": a connected-but-garbage TMP116 is the most dangerous case in the project (heat with no valid feedback), and this is what catches it.
 
 ## 6. Bring-up safety procedure (what protects the hardware and the people)
 
@@ -111,7 +111,7 @@ Bench rules:
 
 The validation plan requires forcing faults (lower threshold, stall a fan, hold SDA low, disconnect a sensor). Some are physical; two need firmware support, compiled only when `CONFIG_BMC_TEST_HOOKS=y`:
 
-- `TESTSET OT_LIMIT <c>`: lowers `OT_TRIP_C` at runtime. The firmware refuses values above the 120 °C constant and the setting is reported in telemetry so a log never hides that it was used. Resets to 120 on reboot and on ACK.
+- `TESTSET OT_LIMIT <c>`: lowers `OT_TRIP_C` at runtime. The firmware refuses values above the 100 °C constant and the setting is reported in telemetry so a log never hides that it was used. Resets to 100 on reboot and on ACK.
 - `TESTINJECT <fault>`: forces a fault condition (`temp_loss`, `i2c`, `stall1`, `stall2`) to exercise logging when the physical injection is not convenient.
 
 Production builds (`CONFIG_BMC_TEST_HOOKS=n`) reject both commands. The final demo build is the production build.

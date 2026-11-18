@@ -57,6 +57,7 @@
         <option value="1">1 · Scenario 4.1 (60 s idle, 10 min full, 5 min idle)</option>
         <option value="2">2 · Smoke test (10 s idle, 30 s at 50 %, 20 s idle)</option>
         <option value="3">3 · Repeatability sweep (0/25/50/75/100 %)</option>
+        <option value="4">4 · Fan sweep (heater off, fans 0–100 % in 10 % steps, 15 s each)</option>
       </select>
       <button id="btnProfStart">Load + start</button>
       <button id="btnProfStop">Stop</button>
@@ -64,7 +65,7 @@
     </div>
     <div class="ops-group">
       <span class="k">Setpoint</span>
-      <input type="number" id="setpoint" min="20" max="110" step="0.5" value="60" aria-label="Plate setpoint in degrees C">
+      <input type="number" id="setpoint" min="20" max="90" step="0.5" value="60" aria-label="Plate setpoint in degrees C">
       <span>°C</span>
       <button id="btnSetpoint">Set</button>
       <span class="ops-note">Locked while a profile runs.</span>
@@ -81,7 +82,7 @@
     <summary>Validation test hooks (this firmware build has them enabled)</summary>
     <div class="ops-group">
       <span class="k">Over-temp limit</span>
-      <input type="number" id="otLimit" min="20" max="120" step="1" value="45" aria-label="Lowered over-temperature limit">
+      <input type="number" id="otLimit" min="20" max="100" step="1" value="45" aria-label="Lowered over-temperature limit">
       <span>°C</span>
       <button id="btnOt">Lower limit</button>
     </div>

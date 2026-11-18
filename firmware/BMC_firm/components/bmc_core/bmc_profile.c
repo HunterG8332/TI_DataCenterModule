@@ -9,14 +9,23 @@ void bmc_profile_clear(bmc_profile_t *p)
 
 bool bmc_profile_add(bmc_profile_t *p, uint32_t dur_s, float heater_pct)
 {
+    return bmc_profile_add_fan(p, dur_s, heater_pct, -1.0f);
+}
+
+bool bmc_profile_add_fan(bmc_profile_t *p, uint32_t dur_s, float heater_pct, float fan_pct)
+{
     if (p->running || p->n >= BMC_PROFILE_MAX_STEPS || dur_s == 0 || dur_s > 24u * 3600u) {
         return false;
     }
     if (!(heater_pct >= 0.0f) || heater_pct > 100.0f) {      /* also rejects NaN */
         return false;
     }
+    if (fan_pct > 100.0f || fan_pct != fan_pct) {
+        return false;
+    }
     p->steps[p->n].dur_s = dur_s;
     p->steps[p->n].heater_pct = heater_pct;
+    p->steps[p->n].fan_pct = fan_pct < 0.0f ? -1.0f : fan_pct;
     p->n++;
     return true;
 }
@@ -41,6 +50,13 @@ bool bmc_profile_preset(bmc_profile_t *p, int id)
         }
         return true;
     }
+    case 4:
+        for (int pct = 0; pct <= 100; pct += 10) {
+            if (!bmc_profile_add_fan(p, BMC_FAN_SWEEP_STEP_S, 0.0f, (float)pct)) {
+                return false;
+            }
+        }
+        return true;
     default:
         return false;
     }
@@ -89,4 +105,9 @@ uint32_t bmc_profile_total_s(const bmc_profile_t *p)
         t += p->steps[i].dur_s;
     }
     return t;
+}
+
+float bmc_profile_fan_pct(const bmc_profile_t *p)
+{
+    return (p->running && p->cur < p->n) ? p->steps[p->cur].fan_pct : -1.0f;
 }
